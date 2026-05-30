@@ -137,6 +137,43 @@ fn test_r_file() {
 
 #[test]
 #[ignore = "requires static PHP runtime"]
+fn test_bare_var_assignment() {
+    let output = dory()
+        .args(["-r", "a = 1; b = 2; dory()->dump(a + b)"])
+        .output()
+        .expect("failed to run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "exit: {}", output.status);
+    assert!(stdout.trim().contains("3"), "stdout: {stdout}");
+}
+
+#[test]
+#[ignore = "requires static PHP runtime"]
+fn test_bare_var_fn_keyword_preserved() {
+    let output = dory()
+        .args(["-r", "array_map(fn(n) => n * 2, [1,2,3])"])
+        .output()
+        .expect("failed to run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "exit: {}", output.status);
+    assert!(stdout.contains("2"), "stdout: {stdout}");
+    assert!(stdout.contains("4"), "stdout: {stdout}");
+}
+
+#[test]
+#[ignore = "requires static PHP runtime"]
+fn test_bare_var_string_untouched() {
+    let output = dory()
+        .args(["-r", r#"dory()->dump("hello x world")"#])
+        .output()
+        .expect("failed to run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "exit: {}", output.status);
+    assert!(stdout.contains("hello x world"), "stdout: {stdout}");
+}
+
+#[test]
+#[ignore = "requires static PHP runtime"]
 fn test_run_nonexistent() {
     let output = dory()
         .args(["run", "nonexistent.php"])

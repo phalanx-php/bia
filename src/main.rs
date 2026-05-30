@@ -147,15 +147,120 @@ fn resolve_run_mode(cli: &cli::DoryCli) -> RunMode {
     RunMode::Passthrough
 }
 
+fn expand_bare_vars(input: &str) -> String {
+    const KEYWORDS: &[&str] = &[
+        "fn", "if", "do", "as", "or", "is", "in",
+    ];
+
+    let bytes = input.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len + 32);
+    let mut i = 0;
+
+    while i < len {
+        let ch = bytes[i] as char;
+
+        // Skip single-quoted strings
+        if ch == '\'' {
+            out.push(ch);
+            i += 1;
+
+            while i < len {
+                let c = bytes[i] as char;
+                out.push(c);
+                i += 1;
+
+                if c == '\\' && i < len {
+                    out.push(bytes[i] as char);
+                    i += 1;
+                } else if c == '\'' {
+                    break;
+                }
+            }
+
+            continue;
+        }
+
+        // Skip double-quoted strings
+        if ch == '"' {
+            out.push(ch);
+            i += 1;
+
+            while i < len {
+                let c = bytes[i] as char;
+                out.push(c);
+                i += 1;
+
+                if c == '\\' && i < len {
+                    out.push(bytes[i] as char);
+                    i += 1;
+                } else if c == '"' {
+                    break;
+                }
+            }
+
+            continue;
+        }
+
+        // Already a PHP variable
+        if ch == '$' {
+            out.push(ch);
+            i += 1;
+            continue;
+        }
+
+        // Check for bare 1-2 char lowercase identifier
+        if ch.is_ascii_lowercase() {
+            let start = i;
+
+            // Ensure we're at a word boundary (not mid-identifier)
+            if start > 0 && (bytes[start - 1] as char).is_ascii_alphanumeric() || (start > 0 && bytes[start - 1] == b'_') {
+                out.push(ch);
+                i += 1;
+                continue;
+            }
+
+            let mut end = start + 1;
+
+            while end < len && (bytes[end] as char).is_ascii_lowercase() {
+                end += 1;
+            }
+
+            let ident_len = end - start;
+
+            // Only 1-2 char identifiers, and next char must not be alphanumeric/underscore
+            if ident_len <= 2 && (end >= len || !(bytes[end] as char).is_ascii_alphanumeric() && bytes[end] != b'_') {
+                let ident = &input[start..end];
+
+                if !KEYWORDS.contains(&ident) {
+                    out.push('$');
+                }
+            }
+
+            for j in start..end {
+                out.push(bytes[j] as char);
+            }
+
+            i = end;
+            continue;
+        }
+
+        out.push(ch);
+        i += 1;
+    }
+
+    out
+}
+
 fn wrap_inline_code(code: &str) -> String {
-    let code = code.trim();
+    let code = expand_bare_vars(code.trim());
     let is_expression = !code.contains(';') && !code.contains('{');
 
     let body = if is_expression {
         format!("$__r = ({code});\nif ($__r !== null) {{ dory()->dump($__r); }}\nreturn 0;")
     } else {
         let stmts = if code.ends_with(';') || code.ends_with('}') || code.ends_with("?>") {
-            code.to_string()
+            code.clone()
         } else {
             format!("{code};")
         };
