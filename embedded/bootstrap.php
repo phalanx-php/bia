@@ -2,8 +2,7 @@
 
 declare(strict_types=1);
 
-// The embed SAPI doesn't define CLI stream constants — define them before
-// any framework code tries to reference STDOUT/STDERR/STDIN as defaults.
+// For the embed SAPI
 if (!defined('STDIN'))  { define('STDIN',  fopen('php://stdin',  'r')); }
 if (!defined('STDOUT')) { define('STDOUT', fopen('php://stdout', 'w')); }
 if (!defined('STDERR')) { define('STDERR', fopen('php://stderr', 'w')); }

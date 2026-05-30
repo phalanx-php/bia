@@ -30,25 +30,19 @@ fn main() -> ExitCode {
         }
     };
 
-    RiphtSapi::configure(SapiConfig::new().sapi_name("cli"))
-        .expect("Failed to configure SAPI");
+    RiphtSapi::configure(SapiConfig::new().sapi_name("cli")).expect("Failed to configure SAPI");
 
     let php = RiphtSapi::instance();
     php.set_ini("swoole.use_shortname", "Off")
         .expect("INI error");
-    php.set_ini("opcache.enable_cli", "1")
-        .expect("INI error");
-    php.set_ini("memory_limit", "512M")
-        .expect("INI error");
+    php.set_ini("opcache.enable_cli", "1").expect("INI error");
+    php.set_ini("memory_limit", "512M").expect("INI error");
 
     let shutdown = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown)).ok();
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&shutdown)).ok();
 
-    let runtime_dir = runtime
-        .runtime_path()
-        .to_string_lossy()
-        .into_owned();
+    let runtime_dir = runtime.runtime_path().to_string_lossy().into_owned();
 
     let cwd = std::env::current_dir().expect("Failed to determine current directory");
 
@@ -58,23 +52,22 @@ fn main() -> ExitCode {
     let (_inline_file, args_json) = match &run_mode {
         RunMode::Inline(code) => {
             let wrapped = wrap_inline_code(code);
-            let mut f = NamedTempFile::with_suffix(".php")
-                .expect("Failed to create inline script file");
-            f.write_all(wrapped.as_bytes()).expect("Failed to write inline script");
+            let mut f =
+                NamedTempFile::with_suffix(".php").expect("Failed to create inline script file");
+            f.write_all(wrapped.as_bytes())
+                .expect("Failed to write inline script");
             f.flush().expect("Failed to flush inline script");
             let path = f.path().to_string_lossy().into_owned();
-            let json = serde_json::to_string(&["run", &path])
-                .expect("Failed to serialize args");
+            let json = serde_json::to_string(&["run", &path]).expect("Failed to serialize args");
             (Some(f), json)
         }
         RunMode::File(path) => {
-            let json = serde_json::to_string(&["run", path.as_str()])
-                .expect("Failed to serialize args");
+            let json =
+                serde_json::to_string(&["run", path.as_str()]).expect("Failed to serialize args");
             (None, json)
         }
         RunMode::Passthrough => {
-            let json = serde_json::to_string(&cli.args)
-                .expect("Failed to serialize args");
+            let json = serde_json::to_string(&cli.args).expect("Failed to serialize args");
             (None, json)
         }
         RunMode::FileNotFound(_) => unreachable!(),
@@ -132,8 +125,7 @@ fn resolve_run_mode(cli: &cli::DoryCli) -> RunMode {
     if let Some(arg) = &cli.code {
         let path = Path::new(arg);
         if path.exists() {
-            let abs = std::fs::canonicalize(path)
-                .unwrap_or_else(|_| path.to_path_buf());
+            let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
             return RunMode::File(abs.to_string_lossy().into_owned());
         }
         if looks_like_path(arg) {

@@ -37,13 +37,13 @@ fn test_version() {
 #[test]
 #[ignore = "requires static PHP runtime"]
 fn test_doctor() {
-    let output = dory()
-        .arg("doctor")
-        .output()
-        .expect("failed to run");
+    let output = dory().arg("doctor").output().expect("failed to run");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "exit: {}", output.status);
-    assert!(stdout.contains("[pass]"), "doctor should show passes. stdout: {stdout}");
+    assert!(
+        stdout.contains("[pass]"),
+        "doctor should show passes. stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -94,7 +94,10 @@ fn test_pipe_stdin() {
 #[test]
 #[ignore = "requires static PHP runtime"]
 fn test_run_fixture() {
-    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/return-value.php");
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/return-value.php"
+    );
     let output = dory()
         .args(["run", fixture])
         .output()

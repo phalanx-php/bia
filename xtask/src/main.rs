@@ -47,6 +47,7 @@ fn find_php() -> String {
             return s;
         }
     }
+    
     for candidate in [
         "/opt/homebrew/opt/php@8.4/bin/php",
         "/opt/homebrew/bin/php",
@@ -57,12 +58,15 @@ fn find_php() -> String {
             return candidate.to_string();
         }
     }
+    
     "php".to_string()
 }
 
 fn run_embed(root: &PathBuf) -> ExitCode {
     eprintln!(":: Rebuilding embedded runtime tar...");
+
     let php = find_php();
+
     let status = Command::new(&php)
         .args(["-d", "phar.readonly=0"])
         .arg(root.join("scripts/build-embed.php"))
@@ -87,9 +91,17 @@ fn run_build(root: &PathBuf, release: bool) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    eprintln!(":: Building dory binary{}...", if release { " (release)" } else { "" });
+    eprintln!(
+        ":: Building dory binary{}...",
+        if release { " (release)" } else { "" }
+    );
+
     let mut cmd = Command::new("cargo");
-    cmd.arg("build").arg("--package").arg("dory").current_dir(root);
+
+    cmd.arg("build")
+        .arg("--package")
+        .arg("dory")
+        .current_dir(root);
 
     if release {
         cmd.arg("--release");
@@ -114,6 +126,7 @@ fn run_test(root: &PathBuf) -> ExitCode {
     }
 
     eprintln!(":: Running integration tests...");
+    
     let status = Command::new("cargo")
         .args(["test", "--package", "dory", "--", "--ignored"])
         .current_dir(root)
@@ -138,6 +151,7 @@ fn run_check(root: &PathBuf) -> ExitCode {
     }
 
     eprintln!(":: Checking dory...");
+    
     let status = Command::new("cargo")
         .args(["check", "--package", "dory"])
         .current_dir(root)
