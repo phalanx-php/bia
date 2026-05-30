@@ -1,0 +1,14 @@
+.*
+*.md
+
+!.gitignore
+!.cargo/
+!.cargo/config.toml
+!README.md
+
+target/
+vendor/
+*.a
+
+# Static PHP build artifacts (118MB+)
+.ripht/

@@ -1,0 +1,16 @@
+[workspace]
+members = [".", "xtask"]
+
+[package]
+name = "dory"
+version = "0.1.0"
+edition = "2021"
+description = "Phalanx Scripting Environment"
+
+[dependencies]
+ripht-php-sapi = { path = "../../../../Rust/ripht-php-sapi" }
+tempfile = "3.27.0"
+clap = { version = "4", features = ["derive"] }
+signal-hook = "0.3"
+tar = "0.4"
+serde_json = "1.0"

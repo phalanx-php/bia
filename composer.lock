@@ -1,0 +1,164 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "160d7c991f4b74b303d0a08dc3b0661a",
+    "packages": [
+        {
+            "name": "php-collective/toml",
+            "version": "0.1.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/php-collective/toml.git",
+                "reference": "305fc5a9234ef49644a945bcaad81a9e8b67f0ce"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/php-collective/toml/zipball/305fc5a9234ef49644a945bcaad81a9e8b67f0ce",
+                "reference": "305fc5a9234ef49644a945bcaad81a9e8b67f0ce",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=8.2",
+                "symfony/polyfill-mbstring": "^1.30"
+            },
+            "require-dev": {
+                "php-collective/code-sniffer": "dev-master",
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^11.5 || ^12.5 || ^13.0"
+            },
+            "suggest": {
+                "ext-ds": "For improved performance with Set-based key tracking"
+            },
+            "bin": [
+                "bin/toml-validate"
+            ],
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "PhpCollective\\Toml\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Mark Scherer"
+                }
+            ],
+            "description": "A TOML parser and encoder for PHP with AST access and collected parse errors",
+            "homepage": "https://github.com/php-collective/toml",
+            "keywords": [
+                "config",
+                "configuration",
+                "developer-tools",
+                "encoder",
+                "parser",
+                "toml"
+            ],
+            "support": {
+                "issues": "https://github.com/php-collective/toml/issues",
+                "source": "https://github.com/php-collective/toml/tree/0.1.3"
+            },
+            "time": "2026-03-30T21:08:12+00:00"
+        },
+        {
+            "name": "symfony/polyfill-mbstring",
+            "version": "v1.38.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/symfony/polyfill-mbstring.git",
+                "reference": "14c5439eec4ccff081ac14eca2dc57feb2a66d92"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/symfony/polyfill-mbstring/zipball/14c5439eec4ccff081ac14eca2dc57feb2a66d92",
+                "reference": "14c5439eec4ccff081ac14eca2dc57feb2a66d92",
+                "shasum": ""
+            },
+            "require": {
+                "ext-iconv": "*",
+                "php": ">=7.2"
+            },
+            "provide": {
+                "ext-mbstring": "*"
+            },
+            "suggest": {
+                "ext-mbstring": "For best performance"
+            },
+            "type": "library",
+            "extra": {
+                "thanks": {
+                    "url": "https://github.com/symfony/polyfill",
+                    "name": "symfony/polyfill"
+                }
+            },
+            "autoload": {
+                "files": [
+                    "bootstrap.php"
+                ],
+                "psr-4": {
+                    "Symfony\\Polyfill\\Mbstring\\": ""
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Nicolas Grekas",
+                    "email": "p@tchwork.com"
+                },
+                {
+                    "name": "Symfony Community",
+                    "homepage": "https://symfony.com/contributors"
+                }
+            ],
+            "description": "Symfony polyfill for the Mbstring extension",
+            "homepage": "https://symfony.com",
+            "keywords": [
+                "compatibility",
+                "mbstring",
+                "polyfill",
+                "portable",
+                "shim"
+            ],
+            "support": {
+                "source": "https://github.com/symfony/polyfill-mbstring/tree/v1.38.1"
+            },
+            "funding": [
+                {
+                    "url": "https://symfony.com/sponsor",
+                    "type": "custom"
+                },
+                {
+                    "url": "https://github.com/fabpot",
+                    "type": "github"
+                },
+                {
+                    "url": "https://github.com/nicolas-grekas",
+                    "type": "github"
+                },
+                {
+                    "url": "https://tidelift.com/funding/github/packagist/symfony/symfony",
+                    "type": "tidelift"
+                }
+            ],
+            "time": "2026-05-26T12:51:13+00:00"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {},
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {},
+    "platform-dev": {},
+    "plugin-api-version": "2.9.0"
+}
