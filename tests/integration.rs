@@ -109,6 +109,34 @@ fn test_run_fixture() {
 
 #[test]
 #[ignore = "requires static PHP runtime"]
+fn test_run_inline() {
+    let output = dory()
+        .args(["run", "1 + 1"])
+        .output()
+        .expect("failed to run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "exit: {}", output.status);
+    assert!(stdout.trim().contains("2"), "stdout: {stdout}");
+}
+
+#[test]
+#[ignore = "requires static PHP runtime"]
+fn test_r_file() {
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/return-value.php"
+    );
+    let output = dory()
+        .args(["-r", fixture])
+        .output()
+        .expect("failed to run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "exit: {}", output.status);
+    assert!(stdout.trim().contains("42"), "stdout: {stdout}");
+}
+
+#[test]
+#[ignore = "requires static PHP runtime"]
 fn test_run_nonexistent() {
     let output = dory()
         .args(["run", "nonexistent.php"])
