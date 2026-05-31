@@ -36,9 +36,17 @@ extensions = [
     "xml",
     "dom",
     "simplexml",
+    "yaml",
     "bcmath",
     "zstd",
     "zip",
+
+    # Serialization
+    "igbinary",
+    "msgpack",
+
+    # Media
+    "exif",
 
     # Crypto
     "sodium",
