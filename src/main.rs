@@ -118,7 +118,7 @@ enum RunMode {
 }
 
 fn looks_like_path(s: &str) -> bool {
-    if s.contains("://") {
+    if s.contains("://") || s.contains('(') || s.contains(';') || s.contains(' ') {
         return false;
     }
 
@@ -206,10 +206,16 @@ fn expand_bare_vars(input: &str) -> String {
             continue;
         }
 
-        // Already a PHP variable
+        // Already a PHP variable — skip $ and the identifier after it
         if ch == '$' {
             out.push(ch);
             i += 1;
+
+            while i < len && ((bytes[i] as char).is_ascii_alphanumeric() || bytes[i] == b'_') {
+                out.push(bytes[i] as char);
+                i += 1;
+            }
+
             continue;
         }
 
