@@ -11,10 +11,11 @@ fn main() {
     let prefix = env::var_os("DORY_STATIC_PHP_PREFIX")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            let home = env::var("HOME")
-                .expect("HOME not set. Set DORY_STATIC_PHP_PREFIX to your PHP build root.");
+            let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").expect(
+                "CARGO_MANIFEST_DIR not set. Set DORY_STATIC_PHP_PREFIX to your PHP build root.",
+            );
 
-            PathBuf::from(format!("{home}/.ripht/php"))
+            PathBuf::from(manifest_dir).join(".ripht/php")
         });
 
     let lib_dir = prefix.join("lib");

@@ -1,42 +1,54 @@
 mod cli;
 mod embed;
+mod error;
+mod exit_status;
 mod hooks;
+mod inline;
+mod run_mode;
 
-use std::io::{IsTerminal, Read, Write};
-use std::path::Path;
+use std::io::Write;
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use clap::Parser;
+use error::DoryError;
 use ripht_php_sapi::{CliRequest, RiphtSapi, SapiConfig};
+use run_mode::RunMode;
 use tempfile::NamedTempFile;
 
 fn main() -> ExitCode {
+    match run() {
+        Ok(code) => code,
+        Err(error) => {
+            eprintln!("dory: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run() -> Result<ExitCode, DoryError> {
     let cli = cli::DoryCli::parse();
 
-    let run_mode = resolve_run_mode(&cli);
+    let run_mode = run_mode::resolve(&cli)?;
 
     if let RunMode::FileNotFound(path) = &run_mode {
-        eprintln!("dory: script not found: {path}");
-        return ExitCode::from(1);
+        return Err(DoryError::new(format!("script not found: {path}")));
     }
 
-    let runtime = match embed::EmbeddedRuntime::extract() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("dory: failed to extract runtime: {e}");
-            return ExitCode::from(1);
-        }
-    };
+    let runtime = embed::EmbeddedRuntime::extract()
+        .map_err(|error| DoryError::from_error("failed to extract runtime", error))?;
 
-    RiphtSapi::configure(SapiConfig::new().sapi_name("cli")).expect("Failed to configure SAPI");
+    RiphtSapi::configure(SapiConfig::new().sapi_name("cli"))
+        .map_err(|error| DoryError::from_error("failed to configure SAPI", error))?;
 
     let php = RiphtSapi::instance();
     php.set_ini("swoole.use_shortname", "Off")
-        .expect("INI error");
-    php.set_ini("opcache.enable_cli", "1").expect("INI error");
-    php.set_ini("memory_limit", "512M").expect("INI error");
+        .map_err(|error| DoryError::from_error("failed to set swoole.use_shortname", error))?;
+    php.set_ini("opcache.enable_cli", "1")
+        .map_err(|error| DoryError::from_error("failed to set opcache.enable_cli", error))?;
+    php.set_ini("memory_limit", "512M")
+        .map_err(|error| DoryError::from_error("failed to set memory_limit", error))?;
 
     let shutdown = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown)).ok();
@@ -44,33 +56,41 @@ fn main() -> ExitCode {
 
     let runtime_dir = runtime.runtime_path().to_string_lossy().into_owned();
 
-    let cwd = std::env::current_dir().expect("Failed to determine current directory");
+    let cwd = std::env::current_dir()
+        .map_err(|error| DoryError::from_error("failed to determine current directory", error))?;
 
-    let exit_file = NamedTempFile::new().expect("Failed to create exit code file");
+    let exit_file = NamedTempFile::new()
+        .map_err(|error| DoryError::from_error("failed to create exit code file", error))?;
     let exit_path = exit_file.path().to_string_lossy().into_owned();
 
     let (_inline_file, args_json) = match &run_mode {
         RunMode::Inline(code) => {
-            let wrapped = wrap_inline_code(code);
-            let mut f =
-                NamedTempFile::with_suffix(".php").expect("Failed to create inline script file");
+            let wrapped = inline::wrap_inline_code(code);
+            let mut f = NamedTempFile::with_suffix(".php").map_err(|error| {
+                DoryError::from_error("failed to create inline script file", error)
+            })?;
             f.write_all(wrapped.as_bytes())
-                .expect("Failed to write inline script");
-            f.flush().expect("Failed to flush inline script");
+                .map_err(|error| DoryError::from_error("failed to write inline script", error))?;
+            f.flush()
+                .map_err(|error| DoryError::from_error("failed to flush inline script", error))?;
             let path = f.path().to_string_lossy().into_owned();
-            let json = serde_json::to_string(&["run", &path]).expect("Failed to serialize args");
+            let json = serde_json::to_string(&["run", &path])
+                .map_err(|error| DoryError::from_error("failed to serialize args", error))?;
             (Some(f), json)
         }
         RunMode::File(path) => {
-            let json =
-                serde_json::to_string(&["run", path.as_str()]).expect("Failed to serialize args");
+            let json = serde_json::to_string(&["run", path.as_str()])
+                .map_err(|error| DoryError::from_error("failed to serialize args", error))?;
             (None, json)
         }
         RunMode::Passthrough => {
-            let json = serde_json::to_string(&cli.args).expect("Failed to serialize args");
+            let json = serde_json::to_string(&cli.args)
+                .map_err(|error| DoryError::from_error("failed to serialize args", error))?;
             (None, json)
         }
-        RunMode::FileNotFound(_) => unreachable!(),
+        RunMode::FileNotFound(path) => {
+            return Err(DoryError::new(format!("script not found: {path}")))
+        }
     };
 
     let mut req = CliRequest::new()
@@ -86,203 +106,20 @@ fn main() -> ExitCode {
 
     let ctx = match req.build(runtime.bootstrap.path()) {
         Ok(ctx) => ctx,
-        Err(e) => {
-            eprintln!("dory: {e}");
-            return ExitCode::from(1);
-        }
+        Err(error) => return Err(DoryError::new(error.to_string())),
     };
 
     let hooks = hooks::DoryHooks::new(Arc::clone(&shutdown));
 
     match php.execute_with_hooks(ctx, hooks) {
         Ok(_result) => {
-            let code = read_exit_code(&exit_path);
+            let code = exit_status::read_exit_code(exit_file.path())?;
             if code == 0 {
-                ExitCode::SUCCESS
+                Ok(ExitCode::SUCCESS)
             } else {
-                ExitCode::from(code)
+                Ok(ExitCode::from(code))
             }
         }
-        Err(e) => {
-            eprintln!("dory: {e}");
-            ExitCode::from(1)
-        }
+        Err(error) => Err(DoryError::new(error.to_string())),
     }
-}
-
-enum RunMode {
-    Inline(String),
-    File(String),
-    FileNotFound(String),
-    Passthrough,
-}
-
-fn looks_like_path(s: &str) -> bool {
-    if s.contains("://") || s.contains('(') || s.contains(';') || s.contains(' ') {
-        return false;
-    }
-
-    s.contains('/') || s.contains('\\') || s.ends_with(".php")
-}
-
-fn resolve_run_mode(cli: &cli::DoryCli) -> RunMode {
-    if let Some(arg) = &cli.code {
-        let path = Path::new(arg);
-        if path.exists() {
-            let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            return RunMode::File(abs.to_string_lossy().into_owned());
-        }
-        if looks_like_path(arg) {
-            return RunMode::FileNotFound(arg.clone());
-        }
-        return RunMode::Inline(arg.clone());
-    }
-
-    if cli.args.is_empty() && !std::io::stdin().is_terminal() {
-        let mut buf = String::new();
-        if std::io::stdin().read_to_string(&mut buf).is_ok() {
-            let trimmed = buf.trim();
-            if !trimmed.is_empty() {
-                return RunMode::Inline(trimmed.to_string());
-            }
-        }
-    }
-
-    RunMode::Passthrough
-}
-
-fn expand_bare_vars(input: &str) -> String {
-    const KEYWORDS: &[&str] = &[
-        "fn", "if", "do", "as", "or", "in", "dd", "fs",
-    ];
-
-    let bytes = input.as_bytes();
-    let len = bytes.len();
-    let mut out = String::with_capacity(len + 32);
-    let mut i = 0;
-
-    while i < len {
-        let ch = bytes[i] as char;
-
-        // Skip single-quoted strings
-        if ch == '\'' {
-            out.push(ch);
-            i += 1;
-
-            while i < len {
-                let c = bytes[i] as char;
-                out.push(c);
-                i += 1;
-
-                if c == '\\' && i < len {
-                    out.push(bytes[i] as char);
-                    i += 1;
-                } else if c == '\'' {
-                    break;
-                }
-            }
-
-            continue;
-        }
-
-        // Skip double-quoted strings
-        if ch == '"' {
-            out.push(ch);
-            i += 1;
-
-            while i < len {
-                let c = bytes[i] as char;
-                out.push(c);
-                i += 1;
-
-                if c == '\\' && i < len {
-                    out.push(bytes[i] as char);
-                    i += 1;
-                } else if c == '"' {
-                    break;
-                }
-            }
-
-            continue;
-        }
-
-        // Already a PHP variable — skip $ and the identifier after it
-        if ch == '$' {
-            out.push(ch);
-            i += 1;
-
-            while i < len && ((bytes[i] as char).is_ascii_alphanumeric() || bytes[i] == b'_') {
-                out.push(bytes[i] as char);
-                i += 1;
-            }
-
-            continue;
-        }
-
-        // Check for bare 1-2 char lowercase identifier
-        if ch.is_ascii_lowercase() {
-            let start = i;
-
-            // Ensure we're at a word boundary (not mid-identifier)
-            if start > 0 && ((bytes[start - 1] as char).is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
-                out.push(ch);
-                i += 1;
-                continue;
-            }
-
-            let mut end = start + 1;
-
-            while end < len && (bytes[end] as char).is_ascii_lowercase() {
-                end += 1;
-            }
-
-            let ident_len = end - start;
-
-            // Only 1-2 char identifiers, and next char must not be alphanumeric/underscore
-            if ident_len <= 2 && (end >= len || (!(bytes[end] as char).is_ascii_alphanumeric() && bytes[end] != b'_')) {
-                let ident = &input[start..end];
-
-                if !KEYWORDS.contains(&ident) {
-                    out.push('$');
-                }
-            }
-
-            for j in start..end {
-                out.push(bytes[j] as char);
-            }
-
-            i = end;
-            continue;
-        }
-
-        out.push(ch);
-        i += 1;
-    }
-
-    out
-}
-
-fn wrap_inline_code(code: &str) -> String {
-    let code = expand_bare_vars(code.trim());
-    let is_expression = !code.contains(';') && !code.contains('{');
-
-    let body = if is_expression {
-        format!("$__r = ({code});\nif ($__r !== null) {{ dory()->dump($__r); }}\nreturn 0;")
-    } else {
-        let stmts = if code.ends_with(';') || code.ends_with('}') || code.ends_with("?>") {
-            code.clone()
-        } else {
-            format!("{code};")
-        };
-        format!("{stmts}\nreturn 0;")
-    };
-
-    format!("<?php declare(strict_types=1);\n{body}\n")
-}
-
-fn read_exit_code(path: &str) -> u8 {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|s| s.trim().parse::<u8>().ok())
-        .unwrap_or(0)
 }

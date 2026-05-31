@@ -28,6 +28,7 @@ $packages = [
     ['Phalanx\\Iris\\', $monorepoSrc . '/Iris/src'],
     ['Phalanx\\Grammata\\', $monorepoSrc . '/Grammata/src'],
     ['Phalanx\\Enigma\\', $monorepoSrc . '/Enigma/src'],
+    ['Phalanx\\Stoa\\', $monorepoSrc . '/Stoa/src'],
     ['Phalanx\\Dory\\', $doryRuntime . '/src'],
     ['Symfony\\Component\\VarDumper\\', $monorepoVendor . '/symfony/var-dumper'],
 ];
@@ -35,6 +36,24 @@ $packages = [
 $eagerFiles = [
     'functions.php' => $doryRuntime . '/src/functions.php',
 ];
+
+$missingPackageDirs = [];
+
+foreach ($packages as [$namespace, $srcDir]) {
+    if (!is_dir($srcDir)) {
+        $missingPackageDirs[] = "{$namespace} => {$srcDir}";
+    }
+}
+
+if ($missingPackageDirs !== []) {
+    fwrite(STDERR, "ERROR: required package source directories are missing:\n");
+
+    foreach ($missingPackageDirs as $missingPackageDir) {
+        fwrite(STDERR, "  - {$missingPackageDir}\n");
+    }
+
+    exit(1);
+}
 
 if (file_exists($outputPath)) {
     unlink($outputPath);
@@ -44,11 +63,6 @@ $archive = new PharData($outputPath);
 $classMap = [];
 
 foreach ($packages as [$namespace, $srcDir]) {
-    if (!is_dir($srcDir)) {
-        fwrite(STDERR, "WARN: package source not found: {$srcDir}\n");
-        continue;
-    }
-
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($srcDir, FilesystemIterator::SKIP_DOTS),
     );

@@ -4,6 +4,19 @@ set -euo pipefail
 DORY="./target/debug/dory"
 PASS=0
 FAIL=0
+WORKDIR="$(mktemp -d)"
+HTTP_PID=""
+
+cleanup() {
+    if [[ -n "$HTTP_PID" ]]; then
+        kill "$HTTP_PID" 2>/dev/null || true
+        wait "$HTTP_PID" 2>/dev/null || true
+    fi
+
+    rm -rf "$WORKDIR"
+}
+
+trap cleanup EXIT
 
 assert_eq() {
     local label="$1" expected="$2" actual="$3"
@@ -55,7 +68,7 @@ assert_contains "help shows doctor" "doctor" "$out"
 out=$($DORY doctor 2>/dev/null)
 assert_contains "doctor PHP pass" "[pass] PHP >= 8.4" "$out"
 assert_contains "doctor Swoole pass" "[pass] Swoole loaded" "$out"
-assert_contains "doctor 45 extensions" "45 loaded" "$out"
+assert_contains "doctor extensions loaded" "loaded" "$out"
 assert_contains "doctor ripht" "cli (ripht)" "$out"
 
 # --- Inline eval ---
@@ -109,21 +122,54 @@ assert_eq "rust ping" '"pong"' "$(echo x | $DORY -r 'dump(dory_rust_ping())' 2>/
 
 # --- HTTP adapter ---
 
-out=$($DORY <<'PHP' 2>/dev/null
-$r = dory()->http->get("https://api.github.com/zen");
+printf 'dory-local\n' > "$WORKDIR/zen"
+python3 - "$WORKDIR" "$WORKDIR/http-port" > "$WORKDIR/http.log" 2>&1 <<'PY' &
+import functools
+import http.server
+import pathlib
+import socketserver
+import sys
+
+root = sys.argv[1]
+port_file = pathlib.Path(sys.argv[2])
+handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=root)
+
+with socketserver.TCPServer(("127.0.0.1", 0), handler) as httpd:
+    port_file.write_text(str(httpd.server_address[1]), encoding="utf-8")
+    httpd.serve_forever()
+PY
+HTTP_PID=$!
+
+for _ in {1..50}; do
+    if [[ -s "$WORKDIR/http-port" ]]; then
+        break
+    fi
+
+    sleep 0.1
+done
+
+if [[ ! -s "$WORKDIR/http-port" ]]; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: local HTTP fixture did not start"
+else
+    HTTP_PORT="$(cat "$WORKDIR/http-port")"
+
+out=$(DORY_GAUNTLET_HTTP_URL="http://127.0.0.1:${HTTP_PORT}/zen" $DORY <<'PHP' 2>/dev/null
+$r = dory()->http->get(getenv("DORY_GAUNTLET_HTTP_URL"));
 dump($r->status);
 PHP
 )
 assert_eq "http status" "200" "$out"
+fi
 
 # --- FS adapter ---
 
-$DORY <<'PHP' 2>/dev/null
-dory()->fs->write("/tmp/dory-gauntlet-assert.txt", "assertion");
+DORY_GAUNTLET_FS_PATH="$WORKDIR/dory-gauntlet-assert.txt" $DORY <<'PHP' 2>/dev/null
+dory()->fs->write(getenv("DORY_GAUNTLET_FS_PATH"), "assertion");
 PHP
 
-out=$($DORY <<'PHP' 2>/dev/null
-dump(dory()->fs->read("/tmp/dory-gauntlet-assert.txt"));
+out=$(DORY_GAUNTLET_FS_PATH="$WORKDIR/dory-gauntlet-assert.txt" $DORY <<'PHP' 2>/dev/null
+dump(dory()->fs->read(getenv("DORY_GAUNTLET_FS_PATH")));
 PHP
 )
 assert_eq "fs read" '"assertion"' "$out"

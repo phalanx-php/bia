@@ -42,11 +42,14 @@ fi
 mkdir -p "$SPC_WORK_DIR"
 cd "$SPC_WORK_DIR"
 
-echo "=== Phase 1: StaticPHP v3 craft ==="
+echo "=== Phase 1: StaticPHP v3 toolchain ==="
 "$SPC_BIN" --version
+"$SPC_BIN" install-pkg --no-interaction --dl-parallel=8 --dl-retry=5 --dl-prefer-binary=true -- pkg-config
+
+echo "=== Phase 2: StaticPHP v3 craft ==="
 "$SPC_BIN" craft --no-interaction "$ROOT_DIR/craft.yml"
 
-echo "=== Phase 2: Install static PHP runtime ==="
+echo "=== Phase 3: Install static PHP runtime ==="
 mkdir -p "$DORY_STATIC_PHP_PREFIX/lib" "$DORY_STATIC_PHP_PREFIX/include"
 
 cp "buildroot/lib/libphp.a" "$DORY_STATIC_PHP_PREFIX/lib/libphp.a"
