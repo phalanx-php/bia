@@ -17,6 +17,8 @@ $monorepoSrc = $workspaceRoot . '/phalanx/src';
 $pocLibs = $workspaceRoot . '/poc/libs';
 $outputPath = $toolDir . '/embedded/dory-runtime.tar';
 
+$monorepoVendor = $workspaceRoot . '/phalanx/vendor';
+
 $packages = [
     ['Phalanx\\', $monorepoSrc . '/Aegis/src'],
     ['Phalanx\\Archon\\', $monorepoSrc . '/Archon/src'],
@@ -27,6 +29,7 @@ $packages = [
     ['Phalanx\\Grammata\\', $monorepoSrc . '/Grammata/src'],
     ['Phalanx\\Enigma\\', $monorepoSrc . '/Enigma/src'],
     ['Phalanx\\Dory\\', $pocLibs . '/dory/src'],
+    ['Symfony\\Component\\VarDumper\\', $monorepoVendor . '/symfony/var-dumper'],
 ];
 
 $eagerFiles = [
