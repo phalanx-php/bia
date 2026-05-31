@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake bison build-essential cmake curl git libc++-dev libc++abi-dev libtool libunwind-dev make perl pkg-config re2c unzip
+          sudo apt-get install -y autoconf automake bison build-essential cmake curl git libc++-dev libc++abi-dev libtool make perl pkg-config re2c unzip
 
       - name: Install macOS build tools
         if: runner.os == 'macOS'
