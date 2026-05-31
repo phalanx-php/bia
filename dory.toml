@@ -5,17 +5,44 @@ php_version = "8.4"
 # List of PHP extensions to compile into the static libphp.a
 # SPC will automatically resolve underlying C library dependencies.
 extensions = [
+    # Async runtime
     "swoole",
+
+    # Database
     "pdo_pgsql",
     "pdo_sqlite",
+    "sqlite3",
     "redis",
-    "opcache",
+
+    # Core (normally built-in but SPC needs them explicit)
+    "filter",
+    "tokenizer",
+    "ctype",
+    "iconv",
+    "mbstring",
+    "openssl",
     "pcntl",
     "posix",
     "sockets",
-    "mbstring",
+    "opcache",
+
+    # Networking + I/O
     "curl",
+    "ffi",
+    "fileinfo",
+    "readline",
+
+    # Data formats
+    "xml",
+    "dom",
+    "simplexml",
+    "bcmath",
     "zstd",
     "zip",
-    "ffi"
+
+    # Crypto
+    "sodium",
+
+    # Packaging
+    "phar",
 ]
