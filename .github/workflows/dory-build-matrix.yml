@@ -52,10 +52,10 @@ jobs:
 
           case "$target" in
             linux-x86_64)
-              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"x86_64-unknown-linux-musl","binary_path":"target/x86_64-unknown-linux-musl/release/dory"}]}'
+              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/dory"}]}'
               ;;
             linux-aarch64)
-              targets='{"include":[{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"aarch64-unknown-linux-musl","binary_path":"target/aarch64-unknown-linux-musl/release/dory"}]}'
+              targets='{"include":[{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"","binary_path":"target/release/dory"}]}'
               ;;
             macos-x86_64)
               targets='{"include":[{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/dory"}]}'
@@ -66,10 +66,10 @@ jobs:
             auto)
               case "$scope" in
                 full-matrix)
-                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"x86_64-unknown-linux-musl","binary_path":"target/x86_64-unknown-linux-musl/release/dory"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"aarch64-unknown-linux-musl","binary_path":"target/aarch64-unknown-linux-musl/release/dory"},{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/dory"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
+                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/dory"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"","binary_path":"target/release/dory"},{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/dory"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
                   ;;
                 first-signal)
-                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"x86_64-unknown-linux-musl","binary_path":"target/x86_64-unknown-linux-musl/release/dory"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
+                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/dory"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
                   ;;
                 *)
                   echo "unknown scope: $scope" >&2
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake bison build-essential cmake curl git libtool libunwind-dev make musl-tools perl pkg-config re2c unzip
+          sudo apt-get install -y autoconf automake bison build-essential cmake curl git libc++-dev libc++abi-dev libtool libunwind-dev make perl pkg-config re2c unzip
 
       - name: Install macOS build tools
         if: runner.os == 'macOS'
