@@ -153,7 +153,7 @@ fn resolve_run_mode(cli: &cli::DoryCli) -> RunMode {
 
 fn expand_bare_vars(input: &str) -> String {
     const KEYWORDS: &[&str] = &[
-        "fn", "if", "do", "as", "or", "is", "in", "dd", "fs",
+        "fn", "if", "do", "as", "or", "in", "dd", "fs",
     ];
 
     let bytes = input.as_bytes();
@@ -224,7 +224,7 @@ fn expand_bare_vars(input: &str) -> String {
             let start = i;
 
             // Ensure we're at a word boundary (not mid-identifier)
-            if start > 0 && (bytes[start - 1] as char).is_ascii_alphanumeric() || (start > 0 && bytes[start - 1] == b'_') {
+            if start > 0 && ((bytes[start - 1] as char).is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
                 out.push(ch);
                 i += 1;
                 continue;
@@ -239,7 +239,7 @@ fn expand_bare_vars(input: &str) -> String {
             let ident_len = end - start;
 
             // Only 1-2 char identifiers, and next char must not be alphanumeric/underscore
-            if ident_len <= 2 && (end >= len || !(bytes[end] as char).is_ascii_alphanumeric() && bytes[end] != b'_') {
+            if ident_len <= 2 && (end >= len || (!(bytes[end] as char).is_ascii_alphanumeric() && bytes[end] != b'_')) {
                 let ident = &input[start..end];
 
                 if !KEYWORDS.contains(&ident) {
@@ -286,4 +286,3 @@ fn read_exit_code(path: &str) -> u8 {
         .and_then(|s| s.trim().parse::<u8>().ok())
         .unwrap_or(0)
 }
-// relink

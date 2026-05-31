@@ -11,7 +11,9 @@ fn main() {
     let prefix = env::var_os("DORY_STATIC_PHP_PREFIX")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            let home = env::var("HOME").unwrap_or_else(|_| String::from("/root"));
+            let home = env::var("HOME").expect(
+                "HOME not set. Set DORY_STATIC_PHP_PREFIX to your PHP build root.",
+            );
 
             PathBuf::from(format!("{home}/.ripht/php"))
         });
