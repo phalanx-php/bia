@@ -14,7 +14,7 @@ declare(strict_types=1);
 $toolDir = dirname(__DIR__);
 $workspaceRoot = dirname($toolDir, 2);
 $monorepoSrc = $workspaceRoot . '/phalanx/src';
-$pocLibs = $workspaceRoot . '/poc/libs';
+$doryRuntime = $workspaceRoot . '/libs/dory-runtime';
 $outputPath = $toolDir . '/embedded/dory-runtime.tar';
 
 $monorepoVendor = $workspaceRoot . '/phalanx/vendor';
@@ -28,12 +28,12 @@ $packages = [
     ['Phalanx\\Iris\\', $monorepoSrc . '/Iris/src'],
     ['Phalanx\\Grammata\\', $monorepoSrc . '/Grammata/src'],
     ['Phalanx\\Enigma\\', $monorepoSrc . '/Enigma/src'],
-    ['Phalanx\\Dory\\', $pocLibs . '/dory/src'],
+    ['Phalanx\\Dory\\', $doryRuntime . '/src'],
     ['Symfony\\Component\\VarDumper\\', $monorepoVendor . '/symfony/var-dumper'],
 ];
 
 $eagerFiles = [
-    'functions.php' => $pocLibs . '/dory/src/functions.php',
+    'functions.php' => $doryRuntime . '/src/functions.php',
 ];
 
 if (file_exists($outputPath)) {
