@@ -90,6 +90,9 @@ jobs:
     needs: matrix
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
+    env:
+      DORY_STATIC_PHP_PREFIX: ${{ github.workspace }}/.ripht/php
+      RIPHT_PHP_SAPI_PREFIX: ${{ github.workspace }}/.ripht/php
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.targets) }}
