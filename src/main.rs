@@ -118,6 +118,10 @@ enum RunMode {
 }
 
 fn looks_like_path(s: &str) -> bool {
+    if s.contains("://") {
+        return false;
+    }
+
     s.contains('/') || s.contains('\\') || s.ends_with(".php")
 }
 
