@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -34,9 +34,6 @@ fn main() {
         return;
     }
 
-    println!("cargo:rustc-link-search=native={}", lib_dir.display());
-    println!("cargo:rustc-link-lib=static=php");
-
     if link_flags.is_file() {
         emit_link_flags(&link_flags);
 
@@ -47,6 +44,9 @@ fn main() {
         "cargo:warning=Dory linker manifest not found at {}; falling back to archive scan",
         link_flags.display()
     );
+
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    println!("cargo:rustc-link-lib=static=php");
 
     let mut libs = fs::read_dir(&lib_dir)
         .expect("failed to read Dory static PHP lib directory")
@@ -77,7 +77,7 @@ fn main() {
     println!("cargo:rustc-link-lib=resolv");
 }
 
-fn emit_link_flags(path: &PathBuf) {
+fn emit_link_flags(path: &Path) {
     let manifest = fs::read_to_string(path).expect("failed to read Dory linker manifest");
 
     for line in manifest.lines() {
@@ -90,8 +90,45 @@ fn emit_link_flags(path: &PathBuf) {
 }
 
 fn emit_tokens(tokens: &[String]) {
-    let mut i = 0;
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    if target_os == "linux" {
+        emit_linux_tokens(tokens);
+
+        return;
+    }
+
+    emit_cargo_tokens(tokens, &target_os);
+}
+
+fn emit_linux_tokens(tokens: &[String]) {
+    for token in tokens {
+        if token.starts_with("-L") && token.len() > 2 {
+            println!("cargo:rustc-link-search=native={}", &token[2..]);
+        }
+    }
+
+    println!("cargo:rustc-link-arg=-Wl,--start-group");
+
+    for token in tokens {
+        if token.starts_with("-l") && token.len() > 2 {
+            println!("cargo:rustc-link-arg={token}");
+        }
+    }
+
+    println!("cargo:rustc-link-arg=-Wl,--end-group");
+
+    for token in tokens {
+        match token.as_str() {
+            "-pthread" => println!("cargo:rustc-link-arg=-pthread"),
+            token if token.starts_with("-Wl,") => println!("cargo:rustc-link-arg={token}"),
+            _ => {}
+        }
+    }
+}
+
+fn emit_cargo_tokens(tokens: &[String], target_os: &str) {
+    let mut i = 0;
 
     while i < tokens.len() {
         match tokens[i].as_str() {

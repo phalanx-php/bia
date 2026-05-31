@@ -21,6 +21,11 @@ fn contains_assignment(input: &str) -> bool {
     let mut i = 0;
 
     while i < bytes.len() {
+        if bytes[i] == b'\'' || bytes[i] == b'"' {
+            i = skip_quoted(bytes, i);
+            continue;
+        }
+
         if bytes[i] != b'=' {
             i += 1;
             continue;
@@ -40,6 +45,26 @@ fn contains_assignment(input: &str) -> bool {
     }
 
     false
+}
+
+fn skip_quoted(bytes: &[u8], start: usize) -> usize {
+    let quote = bytes[start];
+    let mut i = start + 1;
+
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            i += 2;
+            continue;
+        }
+
+        if bytes[i] == quote {
+            return i + 1;
+        }
+
+        i += 1;
+    }
+
+    i
 }
 
 fn expand_bare_vars(input: &str) -> String {
@@ -135,9 +160,7 @@ fn expand_bare_vars(input: &str) -> String {
                 }
             }
 
-            for j in start..end {
-                out.push(bytes[j] as char);
-            }
+            out.push_str(&input[start..end]);
 
             i = end;
             continue;
@@ -189,5 +212,12 @@ mod tests {
         let wrapped = wrap_inline_code("x == 42");
 
         assert!(wrapped.contains("$__r = ($x == 42);"));
+    }
+
+    #[test]
+    fn ignores_assignment_tokens_inside_strings() {
+        let wrapped = wrap_inline_code(r#""x = 42""#);
+
+        assert!(wrapped.contains(r#"$__r = ("x = 42");"#));
     }
 }
