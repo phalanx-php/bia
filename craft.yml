@@ -1,0 +1,52 @@
+php-version: 8.4
+
+extensions:
+  - swoole
+  - pdo_pgsql
+  - pdo_sqlite
+  - sqlite3
+  - redis
+  - filter
+  - tokenizer
+  - ctype
+  - iconv
+  - mbstring
+  - openssl
+  - pcntl
+  - posix
+  - sockets
+  - opcache
+  - curl
+  - ffi
+  - fileinfo
+  - readline
+  - xml
+  - dom
+  - simplexml
+  - yaml
+  - bcmath
+  - zstd
+  - zip
+  - igbinary
+  - msgpack
+  - exif
+  - sodium
+  - phar
+
+sapi:
+  - embed
+
+build-options:
+  with-config-file-path: /etc/dory/php
+  with-config-file-scan-dir: /etc/dory/php/conf.d
+
+download-options:
+  parallel: 8
+  retry: 5
+  prefer-binary: true
+  custom-url:
+    - openssl:https://github.com/openssl/openssl/releases/download/openssl-3.4.1/openssl-3.4.1.tar.gz
+
+craft-options:
+  doctor: true
+  download: true

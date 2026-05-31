@@ -2,54 +2,51 @@
 set -euo pipefail
 
 # Dory Static Runtime Builder
-# Orchestrates SPC (static-php-cli) to compile libphp.a based on dory.toml
+# Orchestrates StaticPHP v3 to compile libphp.a from craft.yml.
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$DIR")"
 
-# We run SPC from the monorepo root. This is critical because it allows SPC
-# to reuse the existing `downloads/`, `source/`, and `buildroot/` directories
-# from the overarching Phalanx project, skipping hours of recompilation.
-WORKSPACE_ROOT="$(cd "$ROOT_DIR/.." && pwd)"
-DORY_STATIC_PHP_PREFIX="${DORY_STATIC_PHP_PREFIX:-$HOME/.ripht/php}"
+DORY_STATIC_PHP_PREFIX="${DORY_STATIC_PHP_PREFIX:-$ROOT_DIR/.ripht/php}"
+SPC_WORK_DIR="${SPC_WORK_DIR:-$ROOT_DIR/.spc-work}"
+SPC_BIN="${DORY_SPC_BIN:-}"
+SPC_VERSION="${SPC_VERSION:-nightly}"
+SPC_BASE_URL="${SPC_BASE_URL:-https://dl.static-php.dev/v3/spc-bin/$SPC_VERSION}"
 
 echo "=== Dory Static Runtime Builder ==="
-echo "Reading configuration from $ROOT_DIR/dory.toml"
+echo "Reading configuration from $ROOT_DIR/craft.yml"
 
-EVAL_OUT=$(php "$DIR/parse-toml.php" "$ROOT_DIR/dory.toml")
-eval "$EVAL_OUT"
+case "$(uname -s)" in
+    Darwin) SPC_OS="macos" ;;
+    Linux) SPC_OS="linux" ;;
+    *) echo "Unsupported OS for SPC v3 binary: $(uname -s)" >&2; exit 1 ;;
+esac
 
-echo "Target PHP: $PHP_VERSION"
-echo "Extensions: $EXTENSIONS"
+case "$(uname -m)" in
+    arm64|aarch64) SPC_ARCH="aarch64" ;;
+    x86_64|amd64) SPC_ARCH="x86_64" ;;
+    *) echo "Unsupported architecture for SPC v3 binary: $(uname -m)" >&2; exit 1 ;;
+esac
 
-cd "$WORKSPACE_ROOT"
+if [ -z "$SPC_BIN" ]; then
+    mkdir -p "$ROOT_DIR/.spc"
+    SPC_BIN="$ROOT_DIR/.spc/spc-$SPC_OS-$SPC_ARCH"
 
-# Use global spc if available, otherwise fallback to local
-if command -v spc >/dev/null 2>&1; then
-    SPC_BIN="spc"
-elif [ -f "$HOME/Code/Php/StaticPhp/spc" ]; then
-    SPC_BIN="$HOME/Code/Php/StaticPhp/spc"
-elif [ -f "spc" ]; then
-    SPC_BIN="./spc"
-else
-    echo "Downloading standalone spc to workspace root..."
-    curl -fsSL -o spc https://dl.static-php.cli.crazywhalecc.com/spc-macos-aarch64
-    chmod +x spc
-    SPC_BIN="./spc"
+    if [ ! -x "$SPC_BIN" ]; then
+        echo "Downloading StaticPHP v3 SPC: $SPC_OS-$SPC_ARCH"
+        curl -#fSL "$SPC_BASE_URL/spc-$SPC_OS-$SPC_ARCH" -o "$SPC_BIN"
+        chmod +x "$SPC_BIN"
+    fi
 fi
 
-echo "=== Phase 1: Download Sources ==="
-# Pin OpenSSL 3.4.1 — OpenSSL 4.0 has fully opaque ASN1 types that PHP 8.4's
-# ext/openssl can't compile against (ERR_NUM_ERRORS, ASN1_STRING).
-OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-3.4.1/openssl-3.4.1.tar.gz"
-$SPC_BIN download --with-php="$PHP_VERSION" --for-extensions="$EXTENSIONS" --custom-url="openssl:$OPENSSL_URL"
+mkdir -p "$SPC_WORK_DIR"
+cd "$SPC_WORK_DIR"
 
-echo "=== Phase 2: Build libphp.a ==="
-# SPC will skip compiling C extensions that haven't changed.
-# `spc build` takes the extension list as a positional arg (comma-separated).
-$SPC_BIN build "$EXTENSIONS" --build-embed
+echo "=== Phase 1: StaticPHP v3 craft ==="
+"$SPC_BIN" --version
+"$SPC_BIN" craft --no-interaction "$ROOT_DIR/craft.yml"
 
-echo "=== Phase 3: Install static PHP runtime ==="
+echo "=== Phase 2: Install static PHP runtime ==="
 mkdir -p "$DORY_STATIC_PHP_PREFIX/lib" "$DORY_STATIC_PHP_PREFIX/include"
 
 cp "buildroot/lib/libphp.a" "$DORY_STATIC_PHP_PREFIX/lib/libphp.a"
