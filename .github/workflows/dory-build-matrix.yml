@@ -109,7 +109,9 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          brew install autoconf automake bison cmake libtool re2c
+          for formula in autoconf automake bison cmake libtool re2c; do
+            brew list --formula "$formula" >/dev/null 2>&1 || brew install "$formula"
+          done
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix re2c)/bin" >> "$GITHUB_PATH"
 
