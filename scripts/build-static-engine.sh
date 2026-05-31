@@ -27,6 +27,8 @@ cd "$WORKSPACE_ROOT"
 # Use global spc if available, otherwise fallback to local
 if command -v spc >/dev/null 2>&1; then
     SPC_BIN="spc"
+elif [ -f "$HOME/Code/Php/StaticPhp/spc" ]; then
+    SPC_BIN="$HOME/Code/Php/StaticPhp/spc"
 elif [ -f "spc" ]; then
     SPC_BIN="./spc"
 else
@@ -37,8 +39,10 @@ else
 fi
 
 echo "=== Phase 1: Download Sources ==="
-# SPC will skip downloading if the archives already exist in downloads/
-$SPC_BIN download "php-src@$PHP_VERSION" --with-php="$PHP_VERSION" --for-extensions="$EXTENSIONS"
+# Pin OpenSSL 3.4.1 — OpenSSL 4.0 has fully opaque ASN1 types that PHP 8.4's
+# ext/openssl can't compile against (ERR_NUM_ERRORS, ASN1_STRING).
+OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-3.4.1/openssl-3.4.1.tar.gz"
+$SPC_BIN download --with-php="$PHP_VERSION" --for-extensions="$EXTENSIONS" --custom-url="openssl:$OPENSSL_URL"
 
 echo "=== Phase 2: Build libphp.a ==="
 # SPC will skip compiling C extensions that haven't changed.

@@ -26,7 +26,15 @@ fn main() {
     }
 
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
+
     println!("cargo:rustc-link-lib=static=php");
+
+    // TODO: The linker drops extension module entries that are only referenced
+    // from internal_functions.c's data section. -force_load would fix this but
+    // cargo:rustc-link-arg-bin doesn't reliably pass through to the macOS linker.
+    // Extensions in dory.toml that don't appear in get_loaded_extensions() are
+    // compiled into libphp.a but not linked into the binary.
+    // See: https://github.com/rust-lang/cargo/issues/9554
 
     for entry in fs::read_dir(&lib_dir).expect("failed to read Dory static PHP lib directory") {
         let path = entry
