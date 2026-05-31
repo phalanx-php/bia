@@ -30,13 +30,23 @@ $argv = $doryArgv !== false ? json_decode($doryArgv, true) : [];
 // Archon expects argv[0] to be the script name (it strips it via array_slice).
 array_unshift($argv, 'dory');
 
+$env = array_filter(
+    $_ENV + $_SERVER,
+    static fn(string $key): bool => !str_starts_with($key, 'HTTP_'),
+    ARRAY_FILTER_USE_KEY,
+);
+
+foreach (['DORY_SCRIPT_TIMEOUT', 'DORY_MAX_CONCURRENCY', 'DORY_VERBOSE', 'DORY_EMBEDDED'] as $key) {
+    $value = getenv($key);
+
+    if ($value !== false) {
+        $env[$key] = $value;
+    }
+}
+
 $context = [
+    ...$env,
     'argv' => $argv,
-    'env'  => array_filter(
-        $_ENV + $_SERVER,
-        static fn(string $key): bool => !str_starts_with($key, 'HTTP_'),
-        ARRAY_FILTER_USE_KEY,
-    ),
 ];
 
 $exitCode = \Phalanx\Archon\Application\Archon::starting($context)

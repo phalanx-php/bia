@@ -98,7 +98,7 @@ fn run() -> Result<ExitCode, DoryError> {
         .with_env("DORY_RUNTIME_DIR", &runtime_dir)
         .with_env("DORY_ARGV", &args_json)
         .with_env("DORY_EXIT_FILE", &exit_path)
-        .with_env("DORY_EMBEDDED", "1");
+        .with_env("DORY_EMBEDDED", "true");
 
     if cli.verbose {
         req = req.with_env("DORY_VERBOSE", "1");

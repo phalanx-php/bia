@@ -15,6 +15,17 @@ on:
         options:
           - first-signal
           - full-matrix
+      target:
+        description: Single target override
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - linux-x86_64
+          - linux-aarch64
+          - macos-x86_64
+          - macos-aarch64
 
 permissions:
   contents: read
@@ -34,17 +45,40 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             scope="${{ inputs.scope }}"
+            target="${{ inputs.target }}"
+          else
+            target="auto"
           fi
 
-          case "$scope" in
-            full-matrix)
-              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm"},{"name":"macos-x86_64","runner":"macos-13"},{"name":"macos-aarch64","runner":"macos-14"}]}'
+          case "$target" in
+            linux-x86_64)
+              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"}]}'
               ;;
-            first-signal)
-              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"},{"name":"macos-aarch64","runner":"macos-14"}]}'
+            linux-aarch64)
+              targets='{"include":[{"name":"linux-aarch64","runner":"ubuntu-24.04-arm"}]}'
+              ;;
+            macos-x86_64)
+              targets='{"include":[{"name":"macos-x86_64","runner":"macos-13"}]}'
+              ;;
+            macos-aarch64)
+              targets='{"include":[{"name":"macos-aarch64","runner":"macos-14"}]}'
+              ;;
+            auto)
+              case "$scope" in
+                full-matrix)
+                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm"},{"name":"macos-x86_64","runner":"macos-13"},{"name":"macos-aarch64","runner":"macos-14"}]}'
+                  ;;
+                first-signal)
+                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"},{"name":"macos-aarch64","runner":"macos-14"}]}'
+                  ;;
+                *)
+                  echo "unknown scope: $scope" >&2
+                  exit 1
+                  ;;
+              esac
               ;;
             *)
-              echo "unknown scope: $scope" >&2
+              echo "unknown target: $target" >&2
               exit 1
               ;;
           esac
@@ -101,6 +135,13 @@ jobs:
           ./target/release/dory doctor
           ./target/release/dory -r '1 + 1'
           ./target/release/dory -r 'dory()->dump("hello")'
+
+      - name: Smoke embedded runtime
+        shell: bash
+        run: |
+          ./target/release/dory -r 'foreach (["Phalanx\\Stoa\\FastRouteCompiler", "Phalanx\\Hydra\\WorkerPool\\WorkerPool", "Phalanx\\Skopos\\ManagedProcess", "Phalanx\\Hermes\\WsRouteConfig", "Phalanx\\Argos\\Subnet", "GuzzleHttp\\Psr7\\ServerRequest", "Psr\\Http\\Message\\ResponseInterface", "FastRoute\\FastRoute", "IPLib\\Factory", "Symfony\\Component\\Runtime\\GenericRuntime", "Symfony\\Runtime\\Symfony\\Component\\Console\\ApplicationRuntime"] as $symbol) { if (!class_exists($symbol) && !interface_exists($symbol)) { throw new RuntimeException("missing " . $symbol); } }'
+          ./target/release/dory -r 'if (!function_exists("FastRoute\\simpleDispatcher")) { throw new RuntimeException("missing FastRoute functions"); }'
+          ./target/release/dory -r 'dump((new Phalanx\Argos\Subnet("127.0.0.0/30"))->contains("127.0.0.1"))'
 
       - name: Run Rust checks
         shell: bash
