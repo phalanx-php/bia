@@ -19,6 +19,11 @@ fn main() {
         });
 
     let lib_dir = prefix.join("lib");
+    let link_flags = lib_dir.join("dory-link-flags.txt");
+
+    println!("cargo:rerun-if-changed={}", prefix.display());
+    println!("cargo:rerun-if-changed={}", lib_dir.display());
+    println!("cargo:rerun-if-changed={}", link_flags.display());
 
     if !lib_dir.is_dir() {
         println!(
@@ -31,6 +36,17 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     println!("cargo:rustc-link-lib=static=php");
+
+    if link_flags.is_file() {
+        emit_link_flags(&link_flags);
+
+        return;
+    }
+
+    println!(
+        "cargo:warning=Dory linker manifest not found at {}; falling back to archive scan",
+        link_flags.display()
+    );
 
     let mut libs = fs::read_dir(&lib_dir)
         .expect("failed to read Dory static PHP lib directory")
@@ -59,4 +75,84 @@ fn main() {
 
     #[cfg(unix)]
     println!("cargo:rustc-link-lib=resolv");
+}
+
+fn emit_link_flags(path: &PathBuf) {
+    let manifest = fs::read_to_string(path).expect("failed to read Dory linker manifest");
+
+    for line in manifest.lines() {
+        let Some((_, value)) = line.split_once('=') else {
+            continue;
+        };
+
+        emit_tokens(&split_shell_words(value));
+    }
+}
+
+fn emit_tokens(tokens: &[String]) {
+    let mut i = 0;
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    while i < tokens.len() {
+        match tokens[i].as_str() {
+            "-framework" => {
+                if let Some(name) = tokens.get(i + 1) {
+                    println!("cargo:rustc-link-lib=framework={name}");
+                    i += 2;
+                    continue;
+                }
+            }
+            "-pthread" => {
+                println!("cargo:rustc-link-arg=-pthread");
+            }
+            token if token.starts_with("-L") && token.len() > 2 => {
+                println!("cargo:rustc-link-search=native={}", &token[2..]);
+            }
+            token if token.starts_with("-l") && token.len() > 2 => {
+                let lib = &token[2..];
+
+                if target_os == "macos" && lib == "stdc++" {
+                    i += 1;
+                    continue;
+                }
+
+                println!("cargo:rustc-link-lib={lib}");
+            }
+            token => {
+                println!("cargo:rustc-link-arg={token}");
+            }
+        }
+
+        i += 1;
+    }
+}
+
+fn split_shell_words(value: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+
+    for ch in value.chars() {
+        match (quote, ch) {
+            (Some(active), ch) if ch == active => {
+                quote = None;
+            }
+            (Some(_), ch) => current.push(ch),
+            (None, '\'' | '"') => {
+                quote = Some(ch);
+            }
+            (None, ch) if ch.is_whitespace() => {
+                if !current.is_empty() {
+                    words.push(std::mem::take(&mut current));
+                }
+            }
+            (None, ch) => current.push(ch),
+        }
+    }
+
+    if !current.is_empty() {
+        words.push(current);
+    }
+
+    words
 }

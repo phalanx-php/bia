@@ -1,6 +1,6 @@
 pub fn wrap_inline_code(code: &str) -> String {
     let code = expand_bare_vars(code.trim());
-    let is_expression = !code.contains(';') && !code.contains('{');
+    let is_expression = !code.contains(';') && !code.contains('{') && !contains_assignment(&code);
 
     let body = if is_expression {
         format!("$__r = ({code});\nif ($__r !== null) {{ dory()->dump($__r); }}\nreturn 0;")
@@ -14,6 +14,32 @@ pub fn wrap_inline_code(code: &str) -> String {
     };
 
     format!("<?php declare(strict_types=1);\n{body}\n")
+}
+
+fn contains_assignment(input: &str) -> bool {
+    let bytes = input.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] != b'=' {
+            i += 1;
+            continue;
+        }
+
+        let prev = i.checked_sub(1).map(|idx| bytes[idx]);
+        let next = bytes.get(i + 1).copied();
+
+        if matches!(prev, Some(b'=' | b'!' | b'<' | b'>' | b'-'))
+            || matches!(next, Some(b'=' | b'>'))
+        {
+            i += 1;
+            continue;
+        }
+
+        return true;
+    }
+
+    false
 }
 
 fn expand_bare_vars(input: &str) -> String {
@@ -156,5 +182,12 @@ mod tests {
         let wrapped = wrap_inline_code("array_map(fn(n) => n * 2, [1, 2])");
 
         assert!(wrapped.contains("fn($n) => $n * 2"));
+    }
+
+    #[test]
+    fn preserves_comparison_expressions() {
+        let wrapped = wrap_inline_code("x == 42");
+
+        assert!(wrapped.contains("$__r = ($x == 42);"));
     }
 }
