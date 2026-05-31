@@ -179,9 +179,9 @@ assert_eq "fs read" '"assertion"' "$out"
 out=$($DORY <<'PHP' 2>/dev/null
 $start = microtime(true);
 dory()->concurrent(
-    fn($scope) => $scope->delay(0.1),
-    fn($scope) => $scope->delay(0.1),
-    fn($scope) => $scope->delay(0.1),
+    fn($s) => $s->delay(0.1),
+    fn($s) => $s->delay(0.1),
+    fn($s) => $s->delay(0.1),
 );
 $ms = round((microtime(true) - $start) * 1000);
 echo $ms;
@@ -199,9 +199,9 @@ fi
 
 out=$($DORY <<'PHP' 2>/dev/null
 dump(dory()->settle(
-    fn($scope) => 42,
-    fn($scope) => throw new RuntimeException("boom"),
-    fn($scope) => "ok",
+    fn($_s) => 42,
+    fn($_s) => throw new RuntimeException("boom"),
+    fn($_s) => "ok",
 ));
 PHP
 )
@@ -211,8 +211,8 @@ assert_contains "settle summary" "2/3 succeeded" "$out"
 
 out=$($DORY <<'PHP' 2>/dev/null
 dump(dory()->race(
-    fn($scope) => (function() use ($scope) { $scope->delay(0.2); return "slow"; })(),
-    fn($scope) => (function() use ($scope) { $scope->delay(0.01); return "fast"; })(),
+    fn($p) => (function() use ($p) { $p->delay(0.2); return "slow"; })(),
+    fn($p) => (function() use ($p) { $p->delay(0.01); return "fast"; })(),
 ));
 PHP
 )
