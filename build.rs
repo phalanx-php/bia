@@ -11,8 +11,9 @@ fn main() {
     let prefix = env::var_os("DORY_STATIC_PHP_PREFIX")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"))
-                .join(".ripht/php")
+            let home = env::var("HOME").unwrap_or_else(|_| String::from("/root"));
+
+            PathBuf::from(format!("{home}/.ripht/php"))
         });
 
     let lib_dir = prefix.join("lib");
@@ -22,19 +23,12 @@ fn main() {
             "cargo:warning=Dory static PHP libraries not found at {}; run scripts/build-static-engine.sh or set DORY_STATIC_PHP_PREFIX",
             prefix.display()
         );
+
         return;
     }
 
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
-
     println!("cargo:rustc-link-lib=static=php");
-
-    // TODO: The linker drops extension module entries that are only referenced
-    // from internal_functions.c's data section. -force_load would fix this but
-    // cargo:rustc-link-arg-bin doesn't reliably pass through to the macOS linker.
-    // Extensions in dory.toml that don't appear in get_loaded_extensions() are
-    // compiled into libphp.a but not linked into the binary.
-    // See: https://github.com/rust-lang/cargo/issues/9554
 
     for entry in fs::read_dir(&lib_dir).expect("failed to read Dory static PHP lib directory") {
         let path = entry

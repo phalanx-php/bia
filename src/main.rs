@@ -286,3 +286,4 @@ fn read_exit_code(path: &str) -> u8 {
         .and_then(|s| s.trim().parse::<u8>().ok())
         .unwrap_or(0)
 }
+// relink
