@@ -81,10 +81,10 @@ for src in buildroot/lib/*.a; do
 done
 
 if [ "$SPC_OS" = "linux" ]; then
-    ZIG_LIB_DIR="$SPC_WORK_DIR/pkgroot/$SPC_ARCH-linux/zig/lib"
     for lib in "libc++.a" "libc++abi.a" "libunwind.a"; do
-        if [ -f "$ZIG_LIB_DIR/$lib" ]; then
-            cp "$ZIG_LIB_DIR/$lib" "$DORY_STATIC_PHP_PREFIX/lib/"
+        src="$(find "$SPC_WORK_DIR/pkgroot" -name "$lib" -type f | head -n 1)"
+        if [ -n "$src" ]; then
+            cp "$src" "$DORY_STATIC_PHP_PREFIX/lib/"
         fi
     done
 fi
