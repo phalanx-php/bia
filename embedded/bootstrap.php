@@ -40,7 +40,7 @@ $context = [
 ];
 
 $exitCode = \Phalanx\Archon\Application\Archon::starting($context)
-    ->providers(new \Phalanx\Dory\DoryServiceBundle())
+    ->providers(new \Phalanx\Dory\Runtime\DoryServiceBundle())
     ->commands(\Phalanx\Dory\Command\DoryCommandGroup::commands())
     ->withConsoleConfig(new \Phalanx\Archon\Application\ConsoleConfig(
         argv: array_slice($argv, 1),
