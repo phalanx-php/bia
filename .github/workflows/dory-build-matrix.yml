@@ -52,24 +52,24 @@ jobs:
 
           case "$target" in
             linux-x86_64)
-              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"}]}'
+              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"x86_64-unknown-linux-musl","binary_path":"target/x86_64-unknown-linux-musl/release/dory"}]}'
               ;;
             linux-aarch64)
-              targets='{"include":[{"name":"linux-aarch64","runner":"ubuntu-24.04-arm"}]}'
+              targets='{"include":[{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"aarch64-unknown-linux-musl","binary_path":"target/aarch64-unknown-linux-musl/release/dory"}]}'
               ;;
             macos-x86_64)
-              targets='{"include":[{"name":"macos-x86_64","runner":"macos-13"}]}'
+              targets='{"include":[{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/dory"}]}'
               ;;
             macos-aarch64)
-              targets='{"include":[{"name":"macos-aarch64","runner":"macos-14"}]}'
+              targets='{"include":[{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
               ;;
             auto)
               case "$scope" in
                 full-matrix)
-                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm"},{"name":"macos-x86_64","runner":"macos-13"},{"name":"macos-aarch64","runner":"macos-14"}]}'
+                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"x86_64-unknown-linux-musl","binary_path":"target/x86_64-unknown-linux-musl/release/dory"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"aarch64-unknown-linux-musl","binary_path":"target/aarch64-unknown-linux-musl/release/dory"},{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/dory"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
                   ;;
                 first-signal)
-                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"},{"name":"macos-aarch64","runner":"macos-14"}]}'
+                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"x86_64-unknown-linux-musl","binary_path":"target/x86_64-unknown-linux-musl/release/dory"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
                   ;;
                 *)
                   echo "unknown scope: $scope" >&2
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake bison build-essential cmake curl git libtool libunwind-dev make perl pkg-config re2c unzip
+          sudo apt-get install -y autoconf automake bison build-essential cmake curl git libtool libunwind-dev make musl-tools perl pkg-config re2c unzip
 
       - name: Install macOS build tools
         if: runner.os == 'macOS'
@@ -124,6 +124,9 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
           rustup component add clippy
+          if [ -n "${{ matrix.rust_target }}" ]; then
+            rustup target add "${{ matrix.rust_target }}"
+          fi
 
       - name: Build static PHP runtime
         shell: bash
@@ -131,32 +134,41 @@ jobs:
 
       - name: Build Dory release binary
         shell: bash
-        run: cargo build --package dory --release
+        run: |
+          if [ -n "${{ matrix.rust_target }}" ]; then
+            cargo build --package dory --release --target "${{ matrix.rust_target }}"
+          else
+            cargo build --package dory --release
+          fi
 
       - name: Smoke release binary
         shell: bash
         run: |
-          ./target/release/dory --version
-          ./target/release/dory doctor
-          ./target/release/dory -r '1 + 1'
-          ./target/release/dory -r 'dory()->dump("hello")'
+          "${{ matrix.binary_path }}" --version
+          "${{ matrix.binary_path }}" doctor
+          "${{ matrix.binary_path }}" -r '1 + 1'
+          "${{ matrix.binary_path }}" -r 'dory()->dump("hello")'
 
       - name: Smoke embedded runtime
         shell: bash
         run: |
-          ./target/release/dory -r 'foreach (["Phalanx\\Stoa\\FastRouteCompiler", "Phalanx\\Hydra\\WorkerPool\\WorkerPool", "Phalanx\\Skopos\\ManagedProcess", "Phalanx\\Hermes\\WsRouteConfig", "Phalanx\\Argos\\Subnet", "GuzzleHttp\\Psr7\\ServerRequest", "Psr\\Http\\Message\\ResponseInterface", "FastRoute\\FastRoute", "IPLib\\Factory", "Symfony\\Component\\Runtime\\GenericRuntime", "Symfony\\Runtime\\Symfony\\Component\\Console\\ApplicationRuntime"] as $symbol) { if (!class_exists($symbol) && !interface_exists($symbol)) { throw new RuntimeException("missing " . $symbol); } }'
-          ./target/release/dory -r 'if (!function_exists("FastRoute\\simpleDispatcher")) { throw new RuntimeException("missing FastRoute functions"); }'
-          ./target/release/dory -r 'dump((new Phalanx\Argos\Subnet("127.0.0.0/30"))->contains("127.0.0.1"))'
+          "${{ matrix.binary_path }}" -r 'foreach (["Phalanx\\Stoa\\FastRouteCompiler", "Phalanx\\Hydra\\WorkerPool\\WorkerPool", "Phalanx\\Skopos\\ManagedProcess", "Phalanx\\Hermes\\WsRouteConfig", "Phalanx\\Argos\\Subnet", "GuzzleHttp\\Psr7\\ServerRequest", "Psr\\Http\\Message\\ResponseInterface", "FastRoute\\FastRoute", "IPLib\\Factory", "Symfony\\Component\\Runtime\\GenericRuntime", "Symfony\\Runtime\\Symfony\\Component\\Console\\ApplicationRuntime"] as $symbol) { if (!class_exists($symbol) && !interface_exists($symbol)) { throw new RuntimeException("missing " . $symbol); } }'
+          "${{ matrix.binary_path }}" -r 'if (!function_exists("FastRoute\\simpleDispatcher")) { throw new RuntimeException("missing FastRoute functions"); }'
+          "${{ matrix.binary_path }}" -r 'dump((new Phalanx\Argos\Subnet("127.0.0.0/30"))->contains("127.0.0.1"))'
 
       - name: Run Rust checks
         shell: bash
         run: |
-          cargo clippy --package dory --all-targets
-          cargo test --package dory
-          cargo test --package dory -- --ignored
+          target_args=()
+          if [ -n "${{ matrix.rust_target }}" ]; then
+            target_args=(--target "${{ matrix.rust_target }}")
+          fi
+          cargo clippy --package dory --all-targets "${target_args[@]}"
+          cargo test --package dory "${target_args[@]}"
+          cargo test --package dory "${target_args[@]}" -- --ignored
 
       - name: Run gauntlet
         shell: bash
         env:
-          DORY_BIN: ./target/release/dory
+          DORY_BIN: ${{ matrix.binary_path }}
         run: bash tests/scripts/gauntlet.sh
