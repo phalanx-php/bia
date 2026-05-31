@@ -480,6 +480,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "ripht-php-sapi"
 version = "0.1.0-rc.8"
+source = "git+https://github.com/jhavenz/ripht-php-sapi.git?rev=1e42f9947db58d6aaa6c54af911e738094868176#1e42f9947db58d6aaa6c54af911e738094868176"
 dependencies = [
  "bindgen",
  "http",
