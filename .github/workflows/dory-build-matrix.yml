@@ -1,0 +1,116 @@
+name: Dory build matrix
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Build scope
+        required: true
+        default: first-signal
+        type: choice
+        options:
+          - first-signal
+          - full-matrix
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: Select build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - name: Select targets
+        id: targets
+        shell: bash
+        run: |
+          scope="first-signal"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            scope="${{ inputs.scope }}"
+          fi
+
+          case "$scope" in
+            full-matrix)
+              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm"},{"name":"macos-x86_64","runner":"macos-13"},{"name":"macos-aarch64","runner":"macos-14"}]}'
+              ;;
+            first-signal)
+              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest"},{"name":"macos-aarch64","runner":"macos-14"}]}'
+              ;;
+            *)
+              echo "unknown scope: $scope" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: matrix
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrix.outputs.targets) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake bison build-essential cmake curl git libtool make perl pkg-config re2c unzip
+
+      - name: Install macOS build tools
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install autoconf automake bison cmake libtool re2c
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix re2c)/bin" >> "$GITHUB_PATH"
+
+      - name: Install Rust stable
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup component add clippy
+
+      - name: Build static PHP runtime
+        shell: bash
+        run: ./scripts/build-static-engine.sh
+
+      - name: Build Dory release binary
+        shell: bash
+        run: cargo build --package dory --release
+
+      - name: Smoke release binary
+        shell: bash
+        run: |
+          ./target/release/dory --version
+          ./target/release/dory doctor
+          ./target/release/dory -r '1 + 1'
+          ./target/release/dory -r 'dory()->dump("hello")'
+
+      - name: Run Rust checks
+        shell: bash
+        run: |
+          cargo clippy --package dory --all-targets
+          cargo test --package dory
+          cargo test --package dory -- --ignored
+
+      - name: Run gauntlet
+        shell: bash
+        env:
+          DORY_BIN: ./target/release/dory
+        run: bash tests/scripts/gauntlet.sh

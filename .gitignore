@@ -4,6 +4,9 @@
 !.gitignore
 !.cargo/
 !.cargo/config.toml
+!.github/
+!.github/workflows/
+!.github/workflows/dory-build-matrix.yml
 !README.md
 
 target/

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DORY="./target/debug/dory"
+DORY="${DORY_BIN:-./target/debug/dory}"
 PASS=0
 FAIL=0
 WORKDIR="$(mktemp -d)"
