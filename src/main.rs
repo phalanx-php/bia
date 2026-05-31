@@ -153,7 +153,7 @@ fn resolve_run_mode(cli: &cli::DoryCli) -> RunMode {
 
 fn expand_bare_vars(input: &str) -> String {
     const KEYWORDS: &[&str] = &[
-        "fn", "if", "do", "as", "or", "is", "in", "dd",
+        "fn", "if", "do", "as", "or", "is", "in", "dd", "fs",
     ];
 
     let bytes = input.as_bytes();
