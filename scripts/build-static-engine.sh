@@ -81,8 +81,8 @@ for src in buildroot/lib/*.a; do
 done
 
 if [ "$SPC_OS" = "linux" ]; then
-    for lib in "libc++.a" "libc++abi.a" "libunwind.a"; do
-        src="$(find "$SPC_WORK_DIR/pkgroot" -name "$lib" -type f | head -n 1)"
+    for lib in "libc++.a" "libc++abi.a" "libc++experimental.a" "libunwind.a"; do
+        src="$(find "$SPC_WORK_DIR/pkgroot" /usr/lib -name "$lib" -type f 2>/dev/null | head -n 1)"
         if [ -n "$src" ]; then
             cp "$src" "$DORY_STATIC_PHP_PREFIX/lib/"
         fi
@@ -103,7 +103,8 @@ chmod +x "$DORY_STATIC_PHP_PREFIX/bin/php-config"
     echo "ldflags=$("$DORY_STATIC_PHP_PREFIX/bin/php-config" --ldflags)"
     PHP_LIBS="$("$DORY_STATIC_PHP_PREFIX/bin/php-config" --libs)"
     if [ "$SPC_OS" = "linux" ]; then
-        PHP_LIBS="${PHP_LIBS//-lstdc++/-lc++ -lc++abi}"
+        PHP_LIBS="${PHP_LIBS//-lstdc++/-lc++ -lc++abi -lc++experimental}"
+        PHP_LIBS="$PHP_LIBS -lresolv"
     fi
     echo "libs=-lphp $PHP_LIBS"
 } > "$DORY_STATIC_PHP_PREFIX/lib/dory-link-flags.txt"

@@ -15,7 +15,6 @@ extensions:
   - pcntl
   - posix
   - sockets
-  - opcache
   - curl
   - ffi
   - fileinfo
