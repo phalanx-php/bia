@@ -147,6 +147,18 @@ out=$($DORY code tokens "$WORKDIR/code" --text=class --file=src/Example.php --js
 assert_contains "code tokens command json kind" '"kind": "Class"' "$out"
 assert_contains "code tokens command json text" '"text": "class"' "$out"
 
+code=0; $DORY code check "$WORKDIR/missing-code-root" >/dev/null 2>&1 || code=$?
+assert_exit "code check missing root exits 1" "1" "$code"
+
+code=0; $DORY code tokens "$WORKDIR/code" --json >/dev/null 2>&1 || code=$?
+assert_exit "code tokens unfiltered exits 1" "1" "$code"
+
+mkdir -p "$WORKDIR/bad-code"
+printf '%s' '<?php class {' > "$WORKDIR/bad-code/Broken.php"
+code=0; out=$($DORY code check "$WORKDIR/bad-code" 2>/dev/null) || code=$?
+assert_exit "code check parse errors exits 1" "1" "$code"
+assert_contains "code check parse errors reports fail" "[fail] parse errors" "$out"
+
 # --- HTTP adapter ---
 
 printf 'dory-local\n' > "$WORKDIR/zen"

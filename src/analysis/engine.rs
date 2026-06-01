@@ -1,14 +1,27 @@
+use std::sync::OnceLock;
+
+use super::project::ProjectIndexCache;
 use super::records::{
     DeclarationQueryPayload, ErrorPayload, ParsePayload, ProjectIndexPayload, TokenQueryPayload,
 };
 use super::request::{CodeQueryRequest, DeclarationQuery, TokenQuery};
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct CodeQueryEngine;
+#[derive(Clone, Debug)]
+pub struct CodeQueryEngine {
+    project_cache: ProjectIndexCache,
+}
 
 impl CodeQueryEngine {
     pub fn new() -> Self {
-        Self
+        Self {
+            project_cache: ProjectIndexCache::new(),
+        }
+    }
+
+    pub fn shared() -> &'static Self {
+        static ENGINE: OnceLock<CodeQueryEngine> = OnceLock::new();
+
+        ENGINE.get_or_init(Self::new)
     }
 
     pub(crate) fn parse_source(&self, source: &[u8], name: Option<&str>) -> ParsePayload {
@@ -20,7 +33,7 @@ impl CodeQueryEngine {
     }
 
     pub(crate) fn index_project(&self, root: &str) -> Result<ProjectIndexPayload, String> {
-        let index = super::project_index(root)?;
+        let index = self.project_cache.index(root)?;
 
         Ok(ProjectIndexPayload {
             ok: true,
@@ -38,7 +51,7 @@ impl CodeQueryEngine {
         root: &str,
         query: &DeclarationQuery,
     ) -> Result<DeclarationQueryPayload, String> {
-        let index = super::project_index(root)?;
+        let index = self.project_cache.index(root)?;
         let declarations = index
             .declarations
             .into_iter()
@@ -58,7 +71,7 @@ impl CodeQueryEngine {
         root: &str,
         query: &TokenQuery,
     ) -> Result<TokenQueryPayload, String> {
-        let index = super::project_index(root)?;
+        let index = self.project_cache.index(root)?;
         let tokens = index
             .tokens
             .into_iter()
@@ -108,6 +121,12 @@ impl CodeQueryEngine {
                 Err(error) => error_json(error),
             },
         }
+    }
+}
+
+impl Default for CodeQueryEngine {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

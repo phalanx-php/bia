@@ -22,7 +22,7 @@ unsafe extern "C" fn zif_dory_code_query_json(
             return analysis::error_json("request must be a string");
         };
 
-        analysis::CodeQueryEngine::new().dispatch_json(&String::from_utf8_lossy(request))
+        analysis::CodeQueryEngine::shared().dispatch_json(&String::from_utf8_lossy(request))
     })
     .unwrap_or_else(|_| analysis::error_json("Dory code parser panicked"));
 
@@ -61,12 +61,12 @@ const fn type_info(code: u32, allow_null: bool) -> ZendType {
 
 static ARGINFO_CODE_QUERY_JSON: [ArgInfo; 2] = [
     ArgInfo {
-        name: 1usize as *const c_char,
+        name: std::ptr::dangling::<c_char>(),
         type_info: type_info(IS_STRING, false),
         default_value: std::ptr::null(),
     },
     ArgInfo {
-        name: b"request\0".as_ptr() as *const c_char,
+        name: c"request".as_ptr(),
         type_info: type_info(IS_STRING, false),
         default_value: std::ptr::null(),
     },
@@ -78,7 +78,7 @@ macro_rules! func_entry {
         // handlers use PHP's native function calling convention.
         unsafe {
             Function::new_unchecked(
-                $name.as_ptr() as *const c_char,
+                $name.as_ptr(),
                 $handler,
                 $arginfo.as_ptr() as *const c_void,
                 ($arginfo.len() - 1) as u32,
@@ -89,7 +89,7 @@ macro_rules! func_entry {
 
 pub fn entries() -> &'static [Function] {
     static ENTRIES: [Function; 1] = [func_entry!(
-        b"dory_code_query_json\0",
+        c"dory_code_query_json",
         zif_dory_code_query_json,
         ARGINFO_CODE_QUERY_JSON
     )];
