@@ -179,6 +179,7 @@ name = "dory"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "libc",
  "ripht-php-sapi",
  "serde_json",
  "signal-hook",

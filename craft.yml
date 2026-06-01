@@ -1,4 +1,5 @@
 php-version: 8.4
+clean-build: true
 
 extensions:
   - swoole
@@ -38,6 +39,7 @@ sapi:
 build-options:
   with-config-file-path: /etc/dory/php
   with-config-file-scan-dir: /etc/dory/php/conf.d
+  disable-opcache-jit: true
 
 download-options:
   parallel: 8

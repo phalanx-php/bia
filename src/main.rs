@@ -4,6 +4,8 @@ mod error;
 mod exit_status;
 mod hooks;
 mod inline;
+#[cfg(target_os = "linux")]
+mod linux_compat;
 mod run_mode;
 
 use std::io::Write;
@@ -45,8 +47,6 @@ fn run() -> Result<ExitCode, DoryError> {
     let php = RiphtSapi::instance();
     php.set_ini("swoole.use_shortname", "Off")
         .map_err(|error| DoryError::from_error("failed to set swoole.use_shortname", error))?;
-    php.set_ini("opcache.enable_cli", "1")
-        .map_err(|error| DoryError::from_error("failed to set opcache.enable_cli", error))?;
     php.set_ini("memory_limit", "512M")
         .map_err(|error| DoryError::from_error("failed to set memory_limit", error))?;
 

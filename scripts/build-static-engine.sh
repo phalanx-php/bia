@@ -104,7 +104,7 @@ chmod +x "$DORY_STATIC_PHP_PREFIX/bin/php-config"
     PHP_LIBS="$("$DORY_STATIC_PHP_PREFIX/bin/php-config" --libs)"
     if [ "$SPC_OS" = "linux" ]; then
         PHP_LIBS="${PHP_LIBS//-lstdc++/-lc++ -lc++abi -lc++experimental}"
-        PHP_LIBS="$PHP_LIBS -lresolv"
+        PHP_LIBS="$PHP_LIBS -lresolv -lc"
     fi
     echo "libs=-lphp $PHP_LIBS"
 } > "$DORY_STATIC_PHP_PREFIX/lib/dory-link-flags.txt"
