@@ -44,7 +44,10 @@ foreach (['DORY_SCRIPT_TIMEOUT', 'DORY_MAX_CONCURRENCY', 'DORY_VERBOSE', 'DORY_E
     }
 }
 
+$projectConfig = \Phalanx\Dory\Runtime\DoryProjectConfig::discover(getcwd() ?: '.');
+
 $context = [
+    ...$projectConfig->contextOverlay(),
     ...$env,
     'argv' => $argv,
 ];
@@ -54,6 +57,8 @@ $exitCode = \Phalanx\Archon\Application\Archon::starting($context)
         new \Phalanx\Dory\Runtime\DoryServiceBundle(),
         new \Phalanx\Iris\HttpServiceBundle(),
         new \Phalanx\Grammata\FilesystemServiceBundle(),
+        new \Phalanx\Argos\NetworkServiceBundle(),
+        new \Phalanx\Hermes\WsServiceBundle(),
     )
     ->commands(\Phalanx\Dory\Command\DoryCommandGroup::commands())
     ->withConsoleConfig(new \Phalanx\Archon\Application\ConsoleConfig(

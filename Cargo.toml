@@ -8,13 +8,19 @@ edition = "2021"
 description = "Phalanx Scripting Environment"
 
 [dependencies]
-ripht-php-sapi = { git = "https://github.com/jhavenz/ripht-php-sapi.git", rev = "1e42f9947db58d6aaa6c54af911e738094868176" }
+ripht-php-sapi = { path = "../../../../Rust/ripht-php-sapi" }
 tempfile = "3.27.0"
 clap = { version = "4", features = ["derive"] }
 signal-hook = "0.3"
 tar = "0.4"
 serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 libc = "0.2"
+bumpalo = "3.19.0"
+mago-database = "1.29.0"
+mago-span = "1.29.0"
+mago-syntax = "1.29.0"
+mago-syntax-core = "1.29.0"
 
 [profile.release]
 strip = true

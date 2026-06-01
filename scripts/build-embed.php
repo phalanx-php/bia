@@ -87,7 +87,6 @@ $eagerFiles = [
     'vendor/symfony/polyfill-php80/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php80/bootstrap.php',
     'vendor/symfony/polyfill-php81/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php81/bootstrap.php',
     'vendor/symfony/polyfill-php84/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php84/bootstrap.php',
-    'vendor/symfony/polyfill-php84/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-php84/bootstrap80.php',
     'vendor/symfony/polyfill-php84/bootstrap82.php' => $monorepoVendor . '/symfony/polyfill-php84/bootstrap82.php',
     'vendor/symfony/polyfill-php85/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php85/bootstrap.php',
     'vendor/symfony/polyfill-php85/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-php85/bootstrap80.php',

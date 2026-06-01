@@ -1,3 +1,4 @@
+mod analysis;
 mod cli;
 mod embed;
 mod error;
@@ -6,6 +7,7 @@ mod hooks;
 mod inline;
 #[cfg(target_os = "linux")]
 mod linux_compat;
+mod native_functions;
 mod run_mode;
 
 use std::io::Write;
@@ -41,8 +43,12 @@ fn run() -> Result<ExitCode, DoryError> {
     let runtime = embed::EmbeddedRuntime::extract()
         .map_err(|error| DoryError::from_error("failed to extract runtime", error))?;
 
-    RiphtSapi::configure(SapiConfig::new().sapi_name("cli"))
-        .map_err(|error| DoryError::from_error("failed to configure SAPI", error))?;
+    RiphtSapi::configure(
+        SapiConfig::new()
+            .sapi_name("cli")
+            .native_functions(native_functions::entries()),
+    )
+    .map_err(|error| DoryError::from_error("failed to configure SAPI", error))?;
 
     let php = RiphtSapi::instance();
     php.set_ini("swoole.use_shortname", "Off")

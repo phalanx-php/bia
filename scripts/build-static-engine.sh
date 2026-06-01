@@ -82,7 +82,7 @@ done
 
 if [ "$SPC_OS" = "linux" ]; then
     for lib in "libc++.a" "libc++abi.a" "libc++experimental.a" "libunwind.a"; do
-        src="$(find "$SPC_WORK_DIR/pkgroot" /usr/lib -name "$lib" -type f 2>/dev/null | head -n 1)"
+        src="$(find "$SPC_WORK_DIR/pkgroot" /usr/lib /root/.cache/zig -name "$lib" -type f 2>/dev/null | head -n 1)"
         if [ -n "$src" ]; then
             cp "$src" "$DORY_STATIC_PHP_PREFIX/lib/"
         fi
