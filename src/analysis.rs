@@ -1,5 +1,9 @@
 use std::borrow::Cow;
-use std::path::Path;
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::UNIX_EPOCH;
 
 use bumpalo::Bump;
 use mago_database::file::{File, FileType};
@@ -12,9 +16,12 @@ use mago_syntax::lexer::Lexer;
 use mago_syntax::parser::parse_file;
 use mago_syntax::settings::LexerSettings;
 use mago_syntax_core::input::Input;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const INLINE_PREFIX: &str = "<?php\n";
+const DEFAULT_INLINE_NAME: &str = "dory://inline.php";
+
+static PROJECT_CACHE: OnceLock<Mutex<HashMap<String, IndexedProject>>> = OnceLock::new();
 
 struct AnalysisSource {
     file: File,
@@ -28,14 +35,14 @@ struct SourceMap {
     wrapped: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct SourceFileRecord {
     id: String,
     name: String,
     wrapped: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct SpanRecord {
     start_offset: u32,
     end_offset: u32,
@@ -45,20 +52,22 @@ struct SpanRecord {
     end_column: u32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct ParseErrorRecord {
     message: String,
     span: SpanRecord,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct TokenRecord {
     kind: String,
     text: String,
     span: SpanRecord,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct DeclarationRecord {
     kind: &'static str,
     name: String,
@@ -67,6 +76,8 @@ struct DeclarationRecord {
     fqn: String,
     span: SpanRecord,
     name_span: SpanRecord,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -85,6 +96,97 @@ struct ErrorPayload {
     message: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+enum CodeQueryRequest {
+    ParseSource {
+        source: String,
+        name: Option<String>,
+    },
+    ParseFile {
+        path: String,
+    },
+    IndexProject {
+        root: String,
+    },
+    QueryDeclarations {
+        root: String,
+        #[serde(default)]
+        query: DeclarationQuery,
+    },
+    QueryTokens {
+        root: String,
+        #[serde(default)]
+        query: TokenQuery,
+    },
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct DeclarationQuery {
+    kind: Option<String>,
+    name: Option<String>,
+    fqn: Option<String>,
+    file: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+struct TokenQuery {
+    kind: Option<String>,
+    text: Option<String>,
+    file: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FileFingerprint {
+    path: String,
+    len: u64,
+    modified_ns: u128,
+}
+
+#[derive(Clone, Debug)]
+struct ProjectFile {
+    absolute: PathBuf,
+    relative: String,
+    fingerprint: FileFingerprint,
+}
+
+#[derive(Clone, Debug)]
+struct IndexedProject {
+    root: String,
+    fingerprint: Vec<FileFingerprint>,
+    files: Vec<SourceFileRecord>,
+    declarations: Vec<DeclarationRecord>,
+    tokens: Vec<TokenRecord>,
+    errors: Vec<ParseErrorRecord>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProjectIndexPayload {
+    ok: bool,
+    root: String,
+    files: Vec<SourceFileRecord>,
+    file_count: usize,
+    declaration_count: usize,
+    token_count: usize,
+    errors: Vec<ParseErrorRecord>,
+}
+
+#[derive(Debug, Serialize)]
+struct DeclarationQueryPayload {
+    ok: bool,
+    root: String,
+    declarations: Vec<DeclarationRecord>,
+    errors: Vec<ParseErrorRecord>,
+}
+
+#[derive(Debug, Serialize)]
+struct TokenQueryPayload {
+    ok: bool,
+    root: String,
+    tokens: Vec<TokenRecord>,
+    errors: Vec<ParseErrorRecord>,
+}
+
 #[derive(Clone, Default)]
 struct DeclarationContext {
     namespace: Option<String>,
@@ -99,10 +201,29 @@ pub fn error_json(message: impl Into<String>) -> String {
     .unwrap_or_else(|_| "{\"ok\":false,\"message\":\"failed to encode error\"}".to_string())
 }
 
+pub fn dispatch_query_json(request_json: &str) -> String {
+    let request = match serde_json::from_str::<CodeQueryRequest>(request_json) {
+        Ok(request) => request,
+        Err(error) => return error_json(format!("invalid Dory code query request: {error}")),
+    };
+
+    match request {
+        CodeQueryRequest::ParseSource { source, name } => {
+            parse_source_json(&source, name.as_deref())
+        }
+        CodeQueryRequest::ParseFile { path } => parse_file_json(&path),
+        CodeQueryRequest::IndexProject { root } => project_index_json(&root),
+        CodeQueryRequest::QueryDeclarations { root, query } => {
+            declaration_query_json(&root, &query)
+        }
+        CodeQueryRequest::QueryTokens { root, query } => token_query_json(&root, &query),
+    }
+}
+
 pub fn parse_source_json(source: &str, name: Option<&str>) -> String {
     let name = name
         .filter(|name| !name.trim().is_empty())
-        .unwrap_or("dory://inline.php");
+        .unwrap_or(DEFAULT_INLINE_NAME);
     let (source, map) = SourceMap::inline(source);
     let file = File::ephemeral(
         Cow::Owned(name.as_bytes().to_vec()),
@@ -130,7 +251,66 @@ pub fn parse_file_json(path: &str) -> String {
     parse_file_payload(&source)
 }
 
+fn project_index_json(root: &str) -> String {
+    match project_index(root) {
+        Ok(index) => encode_json(&ProjectIndexPayload {
+            ok: true,
+            root: index.root,
+            file_count: index.files.len(),
+            declaration_count: index.declarations.len(),
+            token_count: index.tokens.len(),
+            files: index.files,
+            errors: index.errors,
+        }),
+        Err(error) => error_json(error),
+    }
+}
+
+fn declaration_query_json(root: &str, query: &DeclarationQuery) -> String {
+    match project_index(root) {
+        Ok(index) => {
+            let declarations = index
+                .declarations
+                .into_iter()
+                .filter(|declaration| query.matches(declaration))
+                .collect();
+
+            encode_json(&DeclarationQueryPayload {
+                ok: true,
+                root: index.root,
+                declarations,
+                errors: index.errors,
+            })
+        }
+        Err(error) => error_json(error),
+    }
+}
+
+fn token_query_json(root: &str, query: &TokenQuery) -> String {
+    match project_index(root) {
+        Ok(index) => {
+            let tokens = index
+                .tokens
+                .into_iter()
+                .filter(|token| query.matches(token))
+                .collect();
+
+            encode_json(&TokenQueryPayload {
+                ok: true,
+                root: index.root,
+                tokens,
+                errors: index.errors,
+            })
+        }
+        Err(error) => error_json(error),
+    }
+}
+
 fn parse_file_payload(source: &AnalysisSource) -> String {
+    encode_json(&parse_file_payload_record(source))
+}
+
+fn parse_file_payload_record(source: &AnalysisSource) -> ParsePayload {
     let arena = Bump::new();
     let file = &source.file;
     let program = parse_file(&arena, file);
@@ -141,21 +321,26 @@ fn parse_file_payload(source: &AnalysisSource) -> String {
         .collect();
     let declarations = collect_declarations(source, program);
 
-    let payload = ParsePayload {
+    ParsePayload {
         ok: true,
         file: SourceFileRecord {
             id: file.id.as_u64().to_string(),
             name: String::from_utf8_lossy(&file.name).into_owned(),
             wrapped: source.map.wrapped,
         },
-        has_errors: program.has_errors(),
+        has_errors: program.has_errors() || !errors.is_empty(),
         errors,
         tokens,
         declarations,
-    };
+    }
+}
 
-    serde_json::to_string(&payload)
-        .unwrap_or_else(|error| error_json(format!("failed to encode parse result: {error}")))
+fn encode_json<T>(payload: &T) -> String
+where
+    T: Serialize,
+{
+    serde_json::to_string(payload)
+        .unwrap_or_else(|error| error_json(format!("failed to encode code query result: {error}")))
 }
 
 impl SourceMap {
@@ -238,6 +423,264 @@ impl SourceMap {
     }
 }
 
+impl DeclarationQuery {
+    fn matches(&self, declaration: &DeclarationRecord) -> bool {
+        self.kind
+            .as_deref()
+            .is_none_or(|kind| declaration.kind == kind)
+            && self
+                .name
+                .as_deref()
+                .is_none_or(|name| declaration.name == name)
+            && self.fqn.as_deref().is_none_or(|fqn| declaration.fqn == fqn)
+            && self.file.as_deref().is_none_or(|file| {
+                declaration
+                    .file
+                    .as_deref()
+                    .is_some_and(|declaration_file| declaration_file == file)
+            })
+    }
+}
+
+impl TokenQuery {
+    fn matches(&self, token: &TokenRecord) -> bool {
+        self.kind.as_deref().is_none_or(|kind| token.kind == kind)
+            && self.text.as_deref().is_none_or(|text| token.text == text)
+            && self.file.as_deref().is_none_or(|file| {
+                token
+                    .file
+                    .as_deref()
+                    .is_some_and(|token_file| token_file == file)
+            })
+    }
+}
+
+fn project_index(root: &str) -> Result<IndexedProject, String> {
+    let root_path = normalize_root(root)?;
+    let root_key = root_path.to_string_lossy().into_owned();
+    let files = collect_project_files(&root_path)?;
+    let fingerprint = files
+        .iter()
+        .map(|file| file.fingerprint.clone())
+        .collect::<Vec<_>>();
+
+    let cache = PROJECT_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(cache) = cache.lock() {
+        if let Some(index) = cache.get(&root_key) {
+            if index.fingerprint == fingerprint {
+                return Ok(index.clone());
+            }
+        }
+    }
+
+    let index = build_project_index(root_key.clone(), files, fingerprint);
+
+    if let Ok(mut cache) = cache.lock() {
+        cache.insert(root_key, index.clone());
+    }
+
+    Ok(index)
+}
+
+fn normalize_root(root: &str) -> Result<PathBuf, String> {
+    let root = root.trim();
+    if root.is_empty() {
+        return Err("project root must not be empty".to_string());
+    }
+
+    let path = Path::new(root);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| Path::new(".").to_path_buf())
+            .join(path)
+    };
+
+    let path = path
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve project root: {error}"))?;
+
+    if !path.is_dir() {
+        return Err("project root must be a directory".to_string());
+    }
+
+    Ok(path)
+}
+
+fn collect_project_files(root: &Path) -> Result<Vec<ProjectFile>, String> {
+    let mut files = Vec::new();
+    collect_project_files_into(root, root, &mut files)?;
+    files.sort_by(|left, right| left.relative.cmp(&right.relative));
+
+    Ok(files)
+}
+
+fn collect_project_files_into(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<ProjectFile>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|error| format!("failed to read project directory: {error}"))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("failed to read project entry: {error}"))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("failed to inspect project entry: {error}"))?;
+
+        if file_type.is_dir() {
+            if !is_excluded_directory(&entry.file_name().to_string_lossy()) {
+                collect_project_files_into(root, &path, files)?;
+            }
+
+            continue;
+        }
+
+        if !file_type.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("php") {
+            continue;
+        }
+
+        let metadata = entry
+            .metadata()
+            .map_err(|error| format!("failed to inspect PHP source file: {error}"))?;
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let modified_ns = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+            .map_or(0, |duration| duration.as_nanos());
+
+        files.push(ProjectFile {
+            absolute: path,
+            relative: relative.clone(),
+            fingerprint: FileFingerprint {
+                path: relative,
+                len: metadata.len(),
+                modified_ns,
+            },
+        });
+    }
+
+    Ok(())
+}
+
+fn is_excluded_directory(name: &str) -> bool {
+    matches!(
+        name,
+        ".git"
+            | ".aimind"
+            | ".claude"
+            | ".daemon8"
+            | "build"
+            | "dist"
+            | "node_modules"
+            | "storage"
+            | "target"
+            | "var"
+            | "vendor"
+    )
+}
+
+fn build_project_index(
+    root: String,
+    files: Vec<ProjectFile>,
+    fingerprint: Vec<FileFingerprint>,
+) -> IndexedProject {
+    let mut indexed = IndexedProject {
+        root,
+        fingerprint,
+        files: Vec::new(),
+        declarations: Vec::new(),
+        tokens: Vec::new(),
+        errors: Vec::new(),
+    };
+
+    for file in files {
+        let contents = match fs::read(&file.absolute) {
+            Ok(contents) => contents,
+            Err(error) => {
+                indexed.errors.push(file_error(
+                    &file.relative,
+                    format!("failed to read PHP source file: {error}"),
+                ));
+                continue;
+            }
+        };
+        let source = AnalysisSource {
+            map: SourceMap::new(contents.clone(), 0, false),
+            file: File::ephemeral(
+                Cow::Owned(file.relative.as_bytes().to_vec()),
+                Cow::Owned(contents),
+            ),
+        };
+        let payload = parse_file_payload_record(&source);
+
+        indexed.files.push(payload.file);
+        indexed.errors.extend(
+            payload
+                .errors
+                .into_iter()
+                .map(|error| error.with_file(&file.relative)),
+        );
+        indexed.tokens.extend(
+            payload
+                .tokens
+                .into_iter()
+                .map(|token| token.with_file(&file.relative)),
+        );
+        indexed.declarations.extend(
+            payload
+                .declarations
+                .into_iter()
+                .map(|declaration| declaration.with_file(&file.relative)),
+        );
+    }
+
+    indexed
+}
+
+fn file_error(file: &str, message: String) -> ParseErrorRecord {
+    ParseErrorRecord {
+        message: format!("{file}: {message}"),
+        span: SpanRecord {
+            start_offset: 0,
+            end_offset: 0,
+            start_line: 1,
+            start_column: 1,
+            end_line: 1,
+            end_column: 1,
+        },
+    }
+}
+
+impl ParseErrorRecord {
+    fn with_file(mut self, file: &str) -> Self {
+        self.message = format!("{file}: {}", self.message);
+        self
+    }
+}
+
+impl TokenRecord {
+    fn with_file(mut self, file: &str) -> Self {
+        self.file = Some(file.to_string());
+        self
+    }
+}
+
+impl DeclarationRecord {
+    fn with_file(mut self, file: &str) -> Self {
+        self.file = Some(file.to_string());
+        self
+    }
+}
+
 fn collect_errors(source: &AnalysisSource, program: &Program<'_>) -> Vec<ParseErrorRecord> {
     program
         .errors
@@ -278,6 +721,7 @@ fn collect_tokens(source: &AnalysisSource) -> (Vec<TokenRecord>, Vec<ParseErrorR
             kind: token.kind.to_string(),
             text: String::from_utf8_lossy(token.value).into_owned(),
             span: source.map.span_record(span),
+            file: None,
         });
     }
 
@@ -598,6 +1042,7 @@ fn declaration(
         fqn,
         span: source.map.span_record(span),
         name_span: source.map.span_record(name_span),
+        file: None,
     }
 }
 
@@ -695,5 +1140,52 @@ mod tests {
             "App\\Domain\\Demo"
         );
         assert_eq!(payload["declarations"][1]["fqn"], "App\\Domain\\Demo::run");
+    }
+
+    #[test]
+    fn dispatches_parse_source_queries() {
+        let json = dispatch_query_json(
+            r#"{"op":"parse_source","source":"class Demo {}","name":"demo.php"}"#,
+        );
+        let payload: Value = serde_json::from_str(&json).expect("valid parse payload");
+
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["file"]["name"], "demo.php");
+        assert_eq!(payload["declarations"][0]["name"], "Demo");
+    }
+
+    #[test]
+    fn indexes_and_queries_project_php_files() {
+        let root = std::env::temp_dir().join(format!("dory-analysis-test-{}", std::process::id()));
+        let src = root.join("src");
+
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&src).expect("create test project");
+        fs::write(
+            src.join("Example.php"),
+            "<?php namespace App; final class Example { public function run(): void {} }",
+        )
+        .expect("write PHP fixture");
+        fs::create_dir_all(root.join("vendor")).expect("create excluded directory");
+        fs::write(
+            root.join("vendor").join("Ignored.php"),
+            "<?php class Ignored {}",
+        )
+        .expect("write ignored PHP fixture");
+
+        let request = serde_json::json!({
+            "op": "query_declarations",
+            "root": root,
+            "query": {"kind": "class", "name": "Example"}
+        });
+        let json = dispatch_query_json(&request.to_string());
+        let payload: Value = serde_json::from_str(&json).expect("valid query payload");
+
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["declarations"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["declarations"][0]["file"], "src/Example.php");
+        assert_eq!(payload["declarations"][0]["fqn"], "App\\Example");
+
+        let _ = fs::remove_dir_all(root);
     }
 }

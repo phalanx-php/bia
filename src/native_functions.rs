@@ -5,7 +5,7 @@ use ripht_php_sapi::native::{Call, Function, ReturnValue};
 
 use crate::analysis;
 
-unsafe extern "C" fn zif_dory_code_parse_json(
+unsafe extern "C" fn zif_dory_code_query_json(
     execute_data: *mut c_void,
     return_value: *mut ReturnValue,
 ) {
@@ -15,52 +15,14 @@ unsafe extern "C" fn zif_dory_code_parse_json(
         let argc = call.num_args();
 
         if argc == 0 {
-            return analysis::error_json(
-                "dory_code_parse_json expects source code as the first argument",
-            );
+            return analysis::error_json("dory_code_query_json expects a JSON request");
         }
 
-        let Some(source) = call.arg_string(1) else {
-            return analysis::error_json("source must be a string");
+        let Some(request) = call.arg_string(1) else {
+            return analysis::error_json("request must be a string");
         };
 
-        let name = if argc >= 2 {
-            match call.arg_string(2) {
-                Some(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
-                None => return analysis::error_json("name must be a string when provided"),
-            }
-        } else {
-            None
-        };
-
-        analysis::parse_source_json(&String::from_utf8_lossy(source), name.as_deref())
-    })
-    .unwrap_or_else(|_| analysis::error_json("Dory code parser panicked"));
-
-    // SAFETY: PHP supplied `return_value` for this active native call.
-    unsafe { native::set_string(return_value, json.as_bytes()) };
-}
-
-unsafe extern "C" fn zif_dory_code_parse_file_json(
-    execute_data: *mut c_void,
-    return_value: *mut ReturnValue,
-) {
-    let json = std::panic::catch_unwind(|| {
-        // SAFETY: PHP supplied `execute_data` for this active native call.
-        let call = unsafe { Call::from_execute_data(execute_data) };
-        let argc = call.num_args();
-
-        if argc == 0 {
-            return analysis::error_json(
-                "dory_code_parse_file_json expects a path as the first argument",
-            );
-        }
-
-        let Some(path) = call.arg_string(1) else {
-            return analysis::error_json("path must be a string");
-        };
-
-        analysis::parse_file_json(&String::from_utf8_lossy(path))
+        analysis::dispatch_query_json(&String::from_utf8_lossy(request))
     })
     .unwrap_or_else(|_| analysis::error_json("Dory code parser panicked"));
 
@@ -97,32 +59,14 @@ const fn type_info(code: u32, allow_null: bool) -> ZendType {
     }
 }
 
-static ARGINFO_PARSE_JSON: [ArgInfo; 3] = [
+static ARGINFO_CODE_QUERY_JSON: [ArgInfo; 2] = [
     ArgInfo {
         name: 1usize as *const c_char,
         type_info: type_info(IS_STRING, false),
         default_value: std::ptr::null(),
     },
     ArgInfo {
-        name: b"source\0".as_ptr() as *const c_char,
-        type_info: type_info(IS_STRING, false),
-        default_value: std::ptr::null(),
-    },
-    ArgInfo {
-        name: b"name\0".as_ptr() as *const c_char,
-        type_info: type_info(IS_STRING, true),
-        default_value: b"null\0".as_ptr() as *const c_char,
-    },
-];
-
-static ARGINFO_PARSE_FILE_JSON: [ArgInfo; 2] = [
-    ArgInfo {
-        name: 1usize as *const c_char,
-        type_info: type_info(IS_STRING, false),
-        default_value: std::ptr::null(),
-    },
-    ArgInfo {
-        name: b"path\0".as_ptr() as *const c_char,
+        name: b"request\0".as_ptr() as *const c_char,
         type_info: type_info(IS_STRING, false),
         default_value: std::ptr::null(),
     },
@@ -144,18 +88,11 @@ macro_rules! func_entry {
 }
 
 pub fn entries() -> &'static [Function] {
-    static ENTRIES: [Function; 2] = [
-        func_entry!(
-            b"dory_code_parse_json\0",
-            zif_dory_code_parse_json,
-            ARGINFO_PARSE_JSON
-        ),
-        func_entry!(
-            b"dory_code_parse_file_json\0",
-            zif_dory_code_parse_file_json,
-            ARGINFO_PARSE_FILE_JSON
-        ),
-    ];
+    static ENTRIES: [Function; 1] = [func_entry!(
+        b"dory_code_query_json\0",
+        zif_dory_code_query_json,
+        ARGINFO_CODE_QUERY_JSON
+    )];
 
     &ENTRIES
 }

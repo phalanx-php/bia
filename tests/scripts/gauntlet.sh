@@ -116,9 +116,10 @@ assert_eq "run fixture" "42" "$(echo x | $DORY -r tests/fixtures/return-value.ph
 code=0; echo x | $DORY -r missing.php 2>&1 || code=$?
 assert_exit "missing file exits 1" "1" "$code"
 
-# --- Native function ---
+# --- Code parser ---
 
-assert_eq "rust ping" '"pong"' "$(echo x | $DORY -r 'dump(dory_rust_ping())' 2>/dev/null)"
+assert_eq "code query native" "true" "$(echo x | $DORY -r 'dump(function_exists("dory_code_query_json"))' 2>/dev/null)"
+assert_eq "code parser declaration" '"Demo"' "$(echo x | $DORY -r 'dump(dory()->code->parse("final class Demo {}", "demo.php")->declarations[0]->name)' 2>/dev/null)"
 
 # --- HTTP adapter ---
 
