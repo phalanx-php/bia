@@ -22,7 +22,7 @@ unsafe extern "C" fn zif_dory_code_query_json(
             return analysis::error_json("request must be a string");
         };
 
-        analysis::dispatch_query_json(&String::from_utf8_lossy(request))
+        analysis::CodeQueryEngine::new().dispatch_json(&String::from_utf8_lossy(request))
     })
     .unwrap_or_else(|_| analysis::error_json("Dory code parser panicked"));
 

@@ -18,7 +18,19 @@ use mago_syntax::lexer::Lexer;
 use mago_syntax::parser::parse_file;
 use mago_syntax::settings::LexerSettings;
 use mago_syntax_core::input::Input;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+
+mod engine;
+mod query;
+mod records;
+mod request;
+
+#[cfg(test)]
+pub use engine::dispatch_query_json;
+pub use engine::{error_json, CodeQueryEngine};
+use records::{
+    DeclarationRecord, ParseErrorRecord, ParsePayload, SourceFileRecord, SpanRecord, TokenRecord,
+};
 
 const INLINE_PREFIX: &str = "<?php\n";
 const DEFAULT_INLINE_NAME: &str = "dory://inline.php";
@@ -36,108 +48,6 @@ struct SourceMap {
     lines: Vec<u32>,
     prefix_len: u32,
     wrapped: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct SourceFileRecord {
-    id: String,
-    name: String,
-    wrapped: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct SpanRecord {
-    start_offset: u32,
-    end_offset: u32,
-    start_line: u32,
-    start_column: u32,
-    end_line: u32,
-    end_column: u32,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct ParseErrorRecord {
-    message: String,
-    span: SpanRecord,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct TokenRecord {
-    kind: String,
-    text: String,
-    span: SpanRecord,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    file: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct DeclarationRecord {
-    kind: &'static str,
-    name: String,
-    namespace: Option<String>,
-    declaring_type: Option<String>,
-    fqn: String,
-    span: SpanRecord,
-    name_span: SpanRecord,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    file: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct ParsePayload {
-    ok: bool,
-    file: SourceFileRecord,
-    has_errors: bool,
-    errors: Vec<ParseErrorRecord>,
-    tokens: Vec<TokenRecord>,
-    declarations: Vec<DeclarationRecord>,
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorPayload {
-    ok: bool,
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "op", rename_all = "snake_case")]
-enum CodeQueryRequest {
-    ParseSource {
-        source: Option<String>,
-        source_hex: Option<String>,
-        name: Option<String>,
-    },
-    ParseFile {
-        path: String,
-    },
-    IndexProject {
-        root: String,
-    },
-    QueryDeclarations {
-        root: String,
-        #[serde(default)]
-        query: DeclarationQuery,
-    },
-    QueryTokens {
-        root: String,
-        #[serde(default)]
-        query: TokenQuery,
-    },
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-struct DeclarationQuery {
-    kind: Option<String>,
-    name: Option<String>,
-    fqn: Option<String>,
-    file: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-struct TokenQuery {
-    kind: Option<String>,
-    text: Option<String>,
-    file: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -163,40 +73,13 @@ struct ProjectScan {
 }
 
 #[derive(Clone, Debug)]
-struct IndexedProject {
-    root: String,
+pub(crate) struct IndexedProject {
+    pub(crate) root: String,
     fingerprint: Vec<FileFingerprint>,
-    files: Vec<SourceFileRecord>,
-    declarations: Vec<DeclarationRecord>,
-    tokens: Vec<TokenRecord>,
-    errors: Vec<ParseErrorRecord>,
-}
-
-#[derive(Debug, Serialize)]
-struct ProjectIndexPayload {
-    ok: bool,
-    root: String,
-    files: Vec<SourceFileRecord>,
-    file_count: usize,
-    declaration_count: usize,
-    token_count: usize,
-    errors: Vec<ParseErrorRecord>,
-}
-
-#[derive(Debug, Serialize)]
-struct DeclarationQueryPayload {
-    ok: bool,
-    root: String,
-    declarations: Vec<DeclarationRecord>,
-    errors: Vec<ParseErrorRecord>,
-}
-
-#[derive(Debug, Serialize)]
-struct TokenQueryPayload {
-    ok: bool,
-    root: String,
-    tokens: Vec<TokenRecord>,
-    errors: Vec<ParseErrorRecord>,
+    pub(crate) files: Vec<SourceFileRecord>,
+    pub(crate) declarations: Vec<DeclarationRecord>,
+    pub(crate) tokens: Vec<TokenRecord>,
+    pub(crate) errors: Vec<ParseErrorRecord>,
 }
 
 #[derive(Clone, Default)]
@@ -205,44 +88,17 @@ struct DeclarationContext {
     declaring_type: Option<String>,
 }
 
-pub fn error_json(message: impl Into<String>) -> String {
-    serde_json::to_string(&ErrorPayload {
-        ok: false,
-        message: message.into(),
-    })
-    .unwrap_or_else(|_| "{\"ok\":false,\"message\":\"failed to encode error\"}".to_string())
-}
-
-pub fn dispatch_query_json(request_json: &str) -> String {
-    let request = match serde_json::from_str::<CodeQueryRequest>(request_json) {
-        Ok(request) => request,
-        Err(error) => return error_json(format!("invalid Dory code query request: {error}")),
-    };
-
-    match request {
-        CodeQueryRequest::ParseSource {
-            source,
-            source_hex,
-            name,
-        } => match source_bytes(source, source_hex) {
-            Ok(source) => parse_source_bytes_json(&source, name.as_deref()),
-            Err(error) => error_json(error),
-        },
-        CodeQueryRequest::ParseFile { path } => parse_file_json(&path),
-        CodeQueryRequest::IndexProject { root } => project_index_json(&root),
-        CodeQueryRequest::QueryDeclarations { root, query } => {
-            declaration_query_json(&root, &query)
-        }
-        CodeQueryRequest::QueryTokens { root, query } => token_query_json(&root, &query),
-    }
-}
-
 #[cfg(test)]
 fn parse_source_json(source: &str, name: Option<&str>) -> String {
     parse_source_bytes_json(source.as_bytes(), name)
 }
 
+#[cfg(test)]
 fn parse_source_bytes_json(source: &[u8], name: Option<&str>) -> String {
+    encode_json(&parse_source_bytes(source, name))
+}
+
+pub(crate) fn parse_source_bytes(source: &[u8], name: Option<&str>) -> ParsePayload {
     let name = name
         .filter(|name| !name.trim().is_empty())
         .unwrap_or(DEFAULT_INLINE_NAME);
@@ -250,10 +106,13 @@ fn parse_source_bytes_json(source: &[u8], name: Option<&str>) -> String {
     let file = File::ephemeral(Cow::Owned(name.as_bytes().to_vec()), Cow::Owned(source));
     let source = AnalysisSource { file, map };
 
-    parse_file_payload(&source)
+    parse_file_payload_record(&source)
 }
 
-fn source_bytes(source: Option<String>, source_hex: Option<String>) -> Result<Vec<u8>, String> {
+pub(crate) fn source_bytes(
+    source: Option<String>,
+    source_hex: Option<String>,
+) -> Result<Vec<u8>, String> {
     match (source, source_hex) {
         (_, Some(source_hex)) => decode_hex(&source_hex),
         (Some(source), None) => Ok(source.into_bytes()),
@@ -286,80 +145,19 @@ fn decode_hex_digit(byte: u8) -> Result<u8, String> {
     }
 }
 
-pub fn parse_file_json(path: &str) -> String {
+pub(crate) fn parse_file_path(path: &str) -> Result<ParsePayload, String> {
     let path = Path::new(path);
     let workspace = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
     let file = match File::read(&workspace, path, FileType::Host) {
         Ok(file) => file,
-        Err(error) => {
-            return error_json(format!("failed to read PHP source file: {error}"));
-        }
+        Err(error) => return Err(format!("failed to read PHP source file: {error}")),
     };
     let source = AnalysisSource {
         map: SourceMap::file(&file),
         file,
     };
 
-    parse_file_payload(&source)
-}
-
-fn project_index_json(root: &str) -> String {
-    match project_index(root) {
-        Ok(index) => encode_json(&ProjectIndexPayload {
-            ok: true,
-            root: index.root,
-            file_count: index.files.len(),
-            declaration_count: index.declarations.len(),
-            token_count: index.tokens.len(),
-            files: index.files,
-            errors: index.errors,
-        }),
-        Err(error) => error_json(error),
-    }
-}
-
-fn declaration_query_json(root: &str, query: &DeclarationQuery) -> String {
-    match project_index(root) {
-        Ok(index) => {
-            let declarations = index
-                .declarations
-                .into_iter()
-                .filter(|declaration| query.matches(declaration))
-                .collect();
-
-            encode_json(&DeclarationQueryPayload {
-                ok: true,
-                root: index.root,
-                declarations,
-                errors: index.errors,
-            })
-        }
-        Err(error) => error_json(error),
-    }
-}
-
-fn token_query_json(root: &str, query: &TokenQuery) -> String {
-    match project_index(root) {
-        Ok(index) => {
-            let tokens = index
-                .tokens
-                .into_iter()
-                .filter(|token| query.matches(token))
-                .collect();
-
-            encode_json(&TokenQueryPayload {
-                ok: true,
-                root: index.root,
-                tokens,
-                errors: index.errors,
-            })
-        }
-        Err(error) => error_json(error),
-    }
-}
-
-fn parse_file_payload(source: &AnalysisSource) -> String {
-    encode_json(&parse_file_payload_record(source))
+    Ok(parse_file_payload_record(&source))
 }
 
 fn parse_file_payload_record(source: &AnalysisSource) -> ParsePayload {
@@ -389,7 +187,7 @@ fn parse_file_payload_record(source: &AnalysisSource) -> ParsePayload {
     }
 }
 
-fn encode_json<T>(payload: &T) -> String
+pub(crate) fn encode_json<T>(payload: &T) -> String
 where
     T: Serialize,
 {
@@ -488,39 +286,7 @@ fn trim_start_ascii(source: &[u8]) -> &[u8] {
     &source[first_non_space..]
 }
 
-impl DeclarationQuery {
-    fn matches(&self, declaration: &DeclarationRecord) -> bool {
-        self.kind
-            .as_deref()
-            .is_none_or(|kind| declaration.kind == kind)
-            && self
-                .name
-                .as_deref()
-                .is_none_or(|name| declaration.name == name)
-            && self.fqn.as_deref().is_none_or(|fqn| declaration.fqn == fqn)
-            && self.file.as_deref().is_none_or(|file| {
-                declaration
-                    .file
-                    .as_deref()
-                    .is_some_and(|declaration_file| declaration_file == file)
-            })
-    }
-}
-
-impl TokenQuery {
-    fn matches(&self, token: &TokenRecord) -> bool {
-        self.kind.as_deref().is_none_or(|kind| token.kind == kind)
-            && self.text.as_deref().is_none_or(|text| token.text == text)
-            && self.file.as_deref().is_none_or(|file| {
-                token
-                    .file
-                    .as_deref()
-                    .is_some_and(|token_file| token_file == file)
-            })
-    }
-}
-
-fn project_index(root: &str) -> Result<IndexedProject, String> {
+pub(crate) fn project_index(root: &str) -> Result<IndexedProject, String> {
     let root_path = normalize_root(root)?;
     let root_key = root_path.to_string_lossy().into_owned();
     let scan = scan_project_files(&root_path)?;
@@ -752,13 +518,6 @@ fn file_error(file: &str, message: String) -> ParseErrorRecord {
     }
 }
 
-impl ParseErrorRecord {
-    fn with_file(mut self, file: &str) -> Self {
-        self.message = format!("{file}: {}", self.message);
-        self
-    }
-}
-
 fn dedupe_errors(errors: Vec<ParseErrorRecord>) -> Vec<ParseErrorRecord> {
     let mut seen = HashSet::new();
     let mut deduped = Vec::new();
@@ -775,20 +534,6 @@ fn dedupe_errors(errors: Vec<ParseErrorRecord>) -> Vec<ParseErrorRecord> {
     }
 
     deduped
-}
-
-impl TokenRecord {
-    fn with_file(mut self, file: &str) -> Self {
-        self.file = Some(file.to_string());
-        self
-    }
-}
-
-impl DeclarationRecord {
-    fn with_file(mut self, file: &str) -> Self {
-        self.file = Some(file.to_string());
-        self
-    }
 }
 
 fn collect_errors(source: &AnalysisSource, program: &Program<'_>) -> Vec<ParseErrorRecord> {

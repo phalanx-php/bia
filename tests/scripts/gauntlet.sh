@@ -136,6 +136,17 @@ assert_contains "code project index excludes vendor" "1" "$out"
 assert_contains "code declaration query file" '"src/Example.php"' "$out"
 assert_contains "code token query text" '"class"' "$out"
 
+out=$($DORY code check "$WORKDIR/code" 2>/dev/null)
+assert_contains "code check command files" "Files: 1" "$out"
+assert_contains "code check command pass" "[pass] no parse errors" "$out"
+
+out=$($DORY code declarations "$WORKDIR/code" --kind=class --name=Example 2>/dev/null)
+assert_contains "code declarations command" "class App\\Example src/Example.php:1" "$out"
+
+out=$($DORY code tokens "$WORKDIR/code" --text=class --file=src/Example.php --json 2>/dev/null)
+assert_contains "code tokens command json kind" '"kind": "Class"' "$out"
+assert_contains "code tokens command json text" '"text": "class"' "$out"
+
 # --- HTTP adapter ---
 
 printf 'dory-local\n' > "$WORKDIR/zen"
