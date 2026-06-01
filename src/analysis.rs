@@ -1,6 +1,8 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
@@ -20,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 const INLINE_PREFIX: &str = "<?php\n";
 const DEFAULT_INLINE_NAME: &str = "dory://inline.php";
+const PROJECT_CACHE_LIMIT: usize = 8;
 
 static PROJECT_CACHE: OnceLock<Mutex<HashMap<String, IndexedProject>>> = OnceLock::new();
 
@@ -100,7 +103,8 @@ struct ErrorPayload {
 #[serde(tag = "op", rename_all = "snake_case")]
 enum CodeQueryRequest {
     ParseSource {
-        source: String,
+        source: Option<String>,
+        source_hex: Option<String>,
         name: Option<String>,
     },
     ParseFile {
@@ -141,13 +145,21 @@ struct FileFingerprint {
     path: String,
     len: u64,
     modified_ns: u128,
+    content_hash: u64,
 }
 
 #[derive(Clone, Debug)]
 struct ProjectFile {
-    absolute: PathBuf,
     relative: String,
+    contents: Vec<u8>,
     fingerprint: FileFingerprint,
+}
+
+#[derive(Clone, Debug)]
+struct ProjectScan {
+    files: Vec<ProjectFile>,
+    fingerprint: Vec<FileFingerprint>,
+    errors: Vec<ParseErrorRecord>,
 }
 
 #[derive(Clone, Debug)]
@@ -208,9 +220,14 @@ pub fn dispatch_query_json(request_json: &str) -> String {
     };
 
     match request {
-        CodeQueryRequest::ParseSource { source, name } => {
-            parse_source_json(&source, name.as_deref())
-        }
+        CodeQueryRequest::ParseSource {
+            source,
+            source_hex,
+            name,
+        } => match source_bytes(source, source_hex) {
+            Ok(source) => parse_source_bytes_json(&source, name.as_deref()),
+            Err(error) => error_json(error),
+        },
         CodeQueryRequest::ParseFile { path } => parse_file_json(&path),
         CodeQueryRequest::IndexProject { root } => project_index_json(&root),
         CodeQueryRequest::QueryDeclarations { root, query } => {
@@ -220,18 +237,53 @@ pub fn dispatch_query_json(request_json: &str) -> String {
     }
 }
 
-pub fn parse_source_json(source: &str, name: Option<&str>) -> String {
+#[cfg(test)]
+fn parse_source_json(source: &str, name: Option<&str>) -> String {
+    parse_source_bytes_json(source.as_bytes(), name)
+}
+
+fn parse_source_bytes_json(source: &[u8], name: Option<&str>) -> String {
     let name = name
         .filter(|name| !name.trim().is_empty())
         .unwrap_or(DEFAULT_INLINE_NAME);
     let (source, map) = SourceMap::inline(source);
-    let file = File::ephemeral(
-        Cow::Owned(name.as_bytes().to_vec()),
-        Cow::Owned(source.into_bytes()),
-    );
+    let file = File::ephemeral(Cow::Owned(name.as_bytes().to_vec()), Cow::Owned(source));
     let source = AnalysisSource { file, map };
 
     parse_file_payload(&source)
+}
+
+fn source_bytes(source: Option<String>, source_hex: Option<String>) -> Result<Vec<u8>, String> {
+    match (source, source_hex) {
+        (_, Some(source_hex)) => decode_hex(&source_hex),
+        (Some(source), None) => Ok(source.into_bytes()),
+        (None, None) => Err("parse_source queries require source or source_hex".to_string()),
+    }
+}
+
+fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
+    if hex.len() % 2 != 0 {
+        return Err("source_hex must contain an even number of characters".to_string());
+    }
+
+    hex.as_bytes()
+        .chunks_exact(2)
+        .map(|chunk| {
+            let high = decode_hex_digit(chunk[0])?;
+            let low = decode_hex_digit(chunk[1])?;
+
+            Ok((high << 4) | low)
+        })
+        .collect()
+}
+
+fn decode_hex_digit(byte: u8) -> Result<u8, String> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        _ => Err("source_hex contains a non-hex character".to_string()),
+    }
 }
 
 pub fn parse_file_json(path: &str) -> String {
@@ -315,10 +367,12 @@ fn parse_file_payload_record(source: &AnalysisSource) -> ParsePayload {
     let file = &source.file;
     let program = parse_file(&arena, file);
     let (tokens, lexer_errors) = collect_tokens(source);
-    let errors = collect_errors(source, program)
-        .into_iter()
-        .chain(lexer_errors)
-        .collect();
+    let errors = dedupe_errors(
+        collect_errors(source, program)
+            .into_iter()
+            .chain(lexer_errors)
+            .collect(),
+    );
     let declarations = collect_declarations(source, program);
 
     ParsePayload {
@@ -344,19 +398,21 @@ where
 }
 
 impl SourceMap {
-    fn inline(source: &str) -> (String, Self) {
-        let trimmed = source.trim_start();
-        if trimmed.starts_with("<?php") || trimmed.starts_with("<?=") || trimmed.starts_with("<? ")
+    fn inline(source: &[u8]) -> (Vec<u8>, Self) {
+        let trimmed = trim_start_ascii(source);
+        if trimmed.starts_with(b"<?php")
+            || trimmed.starts_with(b"<?=")
+            || trimmed.starts_with(b"<? ")
         {
-            return (
-                source.to_string(),
-                Self::new(source.as_bytes().to_vec(), 0, false),
-            );
+            return (source.to_vec(), Self::new(source.to_vec(), 0, false));
         }
 
+        let mut wrapped = INLINE_PREFIX.as_bytes().to_vec();
+        wrapped.extend_from_slice(source);
+
         (
-            format!("{INLINE_PREFIX}{source}"),
-            Self::new(source.as_bytes().to_vec(), INLINE_PREFIX.len() as u32, true),
+            wrapped,
+            Self::new(source.to_vec(), INLINE_PREFIX.len() as u32, true),
         )
     }
 
@@ -423,6 +479,15 @@ impl SourceMap {
     }
 }
 
+fn trim_start_ascii(source: &[u8]) -> &[u8] {
+    let first_non_space = source
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(source.len());
+
+    &source[first_non_space..]
+}
+
 impl DeclarationQuery {
     fn matches(&self, declaration: &DeclarationRecord) -> bool {
         self.kind
@@ -458,28 +523,40 @@ impl TokenQuery {
 fn project_index(root: &str) -> Result<IndexedProject, String> {
     let root_path = normalize_root(root)?;
     let root_key = root_path.to_string_lossy().into_owned();
-    let files = collect_project_files(&root_path)?;
-    let fingerprint = files
-        .iter()
-        .map(|file| file.fingerprint.clone())
-        .collect::<Vec<_>>();
+    let scan = scan_project_files(&root_path)?;
 
     let cache = PROJECT_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(cache) = cache.lock() {
         if let Some(index) = cache.get(&root_key) {
-            if index.fingerprint == fingerprint {
+            if index.fingerprint == scan.fingerprint {
                 return Ok(index.clone());
             }
         }
     }
 
-    let index = build_project_index(root_key.clone(), files, fingerprint);
+    let index = build_project_index(root_key.clone(), scan);
 
-    if let Ok(mut cache) = cache.lock() {
-        cache.insert(root_key, index.clone());
-    }
+    store_project_index(cache, root_key, index.clone());
 
     Ok(index)
+}
+
+fn store_project_index(
+    cache: &Mutex<HashMap<String, IndexedProject>>,
+    root_key: String,
+    index: IndexedProject,
+) {
+    let Ok(mut cache) = cache.lock() else {
+        return;
+    };
+
+    if !cache.contains_key(&root_key) && cache.len() >= PROJECT_CACHE_LIMIT {
+        if let Some(evicted) = cache.keys().next().cloned() {
+            cache.remove(&evicted);
+        }
+    }
+
+    cache.insert(root_key, index);
 }
 
 fn normalize_root(root: &str) -> Result<PathBuf, String> {
@@ -508,18 +585,28 @@ fn normalize_root(root: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn collect_project_files(root: &Path) -> Result<Vec<ProjectFile>, String> {
+fn scan_project_files(root: &Path) -> Result<ProjectScan, String> {
     let mut files = Vec::new();
-    collect_project_files_into(root, root, &mut files)?;
+    let mut errors = Vec::new();
+    collect_project_files_into(root, root, &mut files, &mut errors)?;
     files.sort_by(|left, right| left.relative.cmp(&right.relative));
+    let fingerprint = files
+        .iter()
+        .map(|file| file.fingerprint.clone())
+        .collect::<Vec<_>>();
 
-    Ok(files)
+    Ok(ProjectScan {
+        files,
+        fingerprint,
+        errors,
+    })
 }
 
 fn collect_project_files_into(
     root: &Path,
     directory: &Path,
     files: &mut Vec<ProjectFile>,
+    errors: &mut Vec<ParseErrorRecord>,
 ) -> Result<(), String> {
     let entries = fs::read_dir(directory)
         .map_err(|error| format!("failed to read project directory: {error}"))?;
@@ -533,7 +620,7 @@ fn collect_project_files_into(
 
         if file_type.is_dir() {
             if !is_excluded_directory(&entry.file_name().to_string_lossy()) {
-                collect_project_files_into(root, &path, files)?;
+                collect_project_files_into(root, &path, files, errors)?;
             }
 
             continue;
@@ -556,14 +643,27 @@ fn collect_project_files_into(
             .ok()
             .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
             .map_or(0, |duration| duration.as_nanos());
+        let contents = match fs::read(&path) {
+            Ok(contents) => contents,
+            Err(error) => {
+                errors.push(file_error(
+                    &relative,
+                    format!("failed to read PHP source file: {error}"),
+                ));
+
+                continue;
+            }
+        };
+        let content_hash = content_hash(&contents);
 
         files.push(ProjectFile {
-            absolute: path,
             relative: relative.clone(),
+            contents,
             fingerprint: FileFingerprint {
                 path: relative,
                 len: metadata.len(),
                 modified_ns,
+                content_hash,
             },
         });
     }
@@ -588,36 +688,22 @@ fn is_excluded_directory(name: &str) -> bool {
     )
 }
 
-fn build_project_index(
-    root: String,
-    files: Vec<ProjectFile>,
-    fingerprint: Vec<FileFingerprint>,
-) -> IndexedProject {
+fn build_project_index(root: String, scan: ProjectScan) -> IndexedProject {
     let mut indexed = IndexedProject {
         root,
-        fingerprint,
+        fingerprint: scan.fingerprint,
         files: Vec::new(),
         declarations: Vec::new(),
         tokens: Vec::new(),
-        errors: Vec::new(),
+        errors: scan.errors,
     };
 
-    for file in files {
-        let contents = match fs::read(&file.absolute) {
-            Ok(contents) => contents,
-            Err(error) => {
-                indexed.errors.push(file_error(
-                    &file.relative,
-                    format!("failed to read PHP source file: {error}"),
-                ));
-                continue;
-            }
-        };
+    for file in scan.files {
         let source = AnalysisSource {
-            map: SourceMap::new(contents.clone(), 0, false),
+            map: SourceMap::new(file.contents.clone(), 0, false),
             file: File::ephemeral(
                 Cow::Owned(file.relative.as_bytes().to_vec()),
-                Cow::Owned(contents),
+                Cow::Owned(file.contents),
             ),
         };
         let payload = parse_file_payload_record(&source);
@@ -646,6 +732,12 @@ fn build_project_index(
     indexed
 }
 
+fn content_hash(contents: &[u8]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    contents.hash(&mut hasher);
+    hasher.finish()
+}
+
 fn file_error(file: &str, message: String) -> ParseErrorRecord {
     ParseErrorRecord {
         message: format!("{file}: {message}"),
@@ -665,6 +757,24 @@ impl ParseErrorRecord {
         self.message = format!("{file}: {}", self.message);
         self
     }
+}
+
+fn dedupe_errors(errors: Vec<ParseErrorRecord>) -> Vec<ParseErrorRecord> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::new();
+
+    for error in errors {
+        let key = (
+            error.message.clone(),
+            error.span.start_offset,
+            error.span.end_offset,
+        );
+        if seen.insert(key) {
+            deduped.push(error);
+        }
+    }
+
+    deduped
 }
 
 impl TokenRecord {
@@ -1079,6 +1189,43 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
+    struct TestProject {
+        root: PathBuf,
+    }
+
+    impl TestProject {
+        fn new(name: &str) -> Self {
+            let unique = std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time after unix epoch")
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!(
+                "dory-analysis-{name}-{}-{unique}",
+                std::process::id()
+            ));
+
+            let _ = fs::remove_dir_all(&root);
+            fs::create_dir_all(root.join("src")).expect("create test project");
+
+            Self { root }
+        }
+
+        fn write_source(&self, relative: &str, contents: &str) {
+            let path = self.root.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("create source parent directory");
+            }
+
+            fs::write(path, contents).expect("write PHP fixture");
+        }
+    }
+
+    impl Drop for TestProject {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
     #[test]
     fn parses_bare_php_source() {
         let json = parse_source_json(
@@ -1155,23 +1302,37 @@ mod tests {
     }
 
     #[test]
-    fn indexes_and_queries_project_php_files() {
-        let root = std::env::temp_dir().join(format!("dory-analysis-test-{}", std::process::id()));
-        let src = root.join("src");
+    fn dispatches_hex_encoded_source_queries() {
+        let json = dispatch_query_json(
+            r#"{"op":"parse_source","source_hex":"636c6173732044656d6f207b7dff","name":"demo.php"}"#,
+        );
+        let payload: Value = serde_json::from_str(&json).expect("valid parse payload");
 
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&src).expect("create test project");
-        fs::write(
-            src.join("Example.php"),
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["declarations"][0]["name"], "Demo");
+    }
+
+    #[test]
+    fn rejects_invalid_hex_encoded_source_queries() {
+        let json = dispatch_query_json(r#"{"op":"parse_source","source_hex":"no"}"#);
+        let payload: Value = serde_json::from_str(&json).expect("valid error payload");
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(
+            payload["message"],
+            "source_hex contains a non-hex character"
+        );
+    }
+
+    #[test]
+    fn indexes_and_queries_project_php_files() {
+        let project = TestProject::new("query");
+        let root = project.root.to_string_lossy().into_owned();
+        project.write_source(
+            "src/Example.php",
             "<?php namespace App; final class Example { public function run(): void {} }",
-        )
-        .expect("write PHP fixture");
-        fs::create_dir_all(root.join("vendor")).expect("create excluded directory");
-        fs::write(
-            root.join("vendor").join("Ignored.php"),
-            "<?php class Ignored {}",
-        )
-        .expect("write ignored PHP fixture");
+        );
+        project.write_source("vendor/Ignored.php", "<?php class Ignored {}");
 
         let request = serde_json::json!({
             "op": "query_declarations",
@@ -1185,7 +1346,41 @@ mod tests {
         assert_eq!(payload["declarations"].as_array().unwrap().len(), 1);
         assert_eq!(payload["declarations"][0]["file"], "src/Example.php");
         assert_eq!(payload["declarations"][0]["fqn"], "App\\Example");
+    }
 
-        let _ = fs::remove_dir_all(root);
+    #[test]
+    fn refreshes_project_index_when_file_contents_change() {
+        let project = TestProject::new("refresh");
+        let root = project.root.to_string_lossy().into_owned();
+        project.write_source("src/Example.php", "<?php class Alpha {}");
+
+        let alpha = serde_json::json!({
+            "op": "query_declarations",
+            "root": root.clone(),
+            "query": {"kind": "class", "name": "Alpha"}
+        });
+        let payload: Value =
+            serde_json::from_str(&dispatch_query_json(&alpha.to_string())).expect("valid payload");
+        assert_eq!(payload["declarations"].as_array().unwrap().len(), 1);
+
+        project.write_source("src/Example.php", "<?php class Bravo {}");
+
+        let stale = serde_json::json!({
+            "op": "query_declarations",
+            "root": root.clone(),
+            "query": {"kind": "class", "name": "Alpha"}
+        });
+        let payload: Value =
+            serde_json::from_str(&dispatch_query_json(&stale.to_string())).expect("valid payload");
+        assert_eq!(payload["declarations"].as_array().unwrap().len(), 0);
+
+        let bravo = serde_json::json!({
+            "op": "query_declarations",
+            "root": root,
+            "query": {"kind": "class", "name": "Bravo"}
+        });
+        let payload: Value =
+            serde_json::from_str(&dispatch_query_json(&bravo.to_string())).expect("valid payload");
+        assert_eq!(payload["declarations"].as_array().unwrap().len(), 1);
     }
 }

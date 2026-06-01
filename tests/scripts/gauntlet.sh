@@ -121,6 +121,21 @@ assert_exit "missing file exits 1" "1" "$code"
 assert_eq "code query native" "true" "$(echo x | $DORY -r 'dump(function_exists("dory_code_query_json"))' 2>/dev/null)"
 assert_eq "code parser declaration" '"Demo"' "$(echo x | $DORY -r 'dump(dory()->code->parse("final class Demo {}", "demo.php")->declarations[0]->name)' 2>/dev/null)"
 
+mkdir -p "$WORKDIR/code/src" "$WORKDIR/code/vendor"
+printf '%s' '<?php namespace App; final class Example { public function run(): void {} }' > "$WORKDIR/code/src/Example.php"
+printf '%s' '<?php class Ignored {}' > "$WORKDIR/code/vendor/Ignored.php"
+
+out=$(DORY_GAUNTLET_CODE_ROOT="$WORKDIR/code" $DORY <<'PHP' 2>/dev/null
+$root = getenv("DORY_GAUNTLET_CODE_ROOT");
+dump(dory()->code->indexProject($root)->fileCount);
+dump(dory()->code->declarations($root, new \Phalanx\Dory\Code\DeclarationQuery(kind: "class"))->declarations[0]->file);
+dump(dory()->code->tokens($root, new \Phalanx\Dory\Code\TokenQuery(text: "class"))->tokens[0]->text);
+PHP
+)
+assert_contains "code project index excludes vendor" "1" "$out"
+assert_contains "code declaration query file" '"src/Example.php"' "$out"
+assert_contains "code token query text" '"class"' "$out"
+
 # --- HTTP adapter ---
 
 printf 'dory-local\n' > "$WORKDIR/zen"
