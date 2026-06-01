@@ -15,3 +15,4 @@ vendor/
 
 # Static PHP build artifacts (118MB+)
 .ripht/
+dory-linux-x86_64
