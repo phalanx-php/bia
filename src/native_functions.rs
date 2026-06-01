@@ -5,7 +5,7 @@ use ripht_php_sapi::native::{Call, Function, ReturnValue};
 
 use crate::analysis;
 
-unsafe extern "C" fn zif_dory_mago_parse_json(
+unsafe extern "C" fn zif_dory_code_parse_json(
     execute_data: *mut c_void,
     return_value: *mut ReturnValue,
 ) {
@@ -16,7 +16,7 @@ unsafe extern "C" fn zif_dory_mago_parse_json(
 
         if argc == 0 {
             return analysis::error_json(
-                "dory_mago_parse_json expects source code as the first argument",
+                "dory_code_parse_json expects source code as the first argument",
             );
         }
 
@@ -35,13 +35,13 @@ unsafe extern "C" fn zif_dory_mago_parse_json(
 
         analysis::parse_source_json(&String::from_utf8_lossy(source), name.as_deref())
     })
-    .unwrap_or_else(|_| analysis::error_json("Dory Mago parser panicked"));
+    .unwrap_or_else(|_| analysis::error_json("Dory code parser panicked"));
 
     // SAFETY: PHP supplied `return_value` for this active native call.
     unsafe { native::set_string(return_value, json.as_bytes()) };
 }
 
-unsafe extern "C" fn zif_dory_mago_parse_file_json(
+unsafe extern "C" fn zif_dory_code_parse_file_json(
     execute_data: *mut c_void,
     return_value: *mut ReturnValue,
 ) {
@@ -52,7 +52,7 @@ unsafe extern "C" fn zif_dory_mago_parse_file_json(
 
         if argc == 0 {
             return analysis::error_json(
-                "dory_mago_parse_file_json expects a path as the first argument",
+                "dory_code_parse_file_json expects a path as the first argument",
             );
         }
 
@@ -62,7 +62,7 @@ unsafe extern "C" fn zif_dory_mago_parse_file_json(
 
         analysis::parse_file_json(&String::from_utf8_lossy(path))
     })
-    .unwrap_or_else(|_| analysis::error_json("Dory Mago parser panicked"));
+    .unwrap_or_else(|_| analysis::error_json("Dory code parser panicked"));
 
     // SAFETY: PHP supplied `return_value` for this active native call.
     unsafe { native::set_string(return_value, json.as_bytes()) };
@@ -146,13 +146,13 @@ macro_rules! func_entry {
 pub fn entries() -> &'static [Function] {
     static ENTRIES: [Function; 2] = [
         func_entry!(
-            b"dory_mago_parse_json\0",
-            zif_dory_mago_parse_json,
+            b"dory_code_parse_json\0",
+            zif_dory_code_parse_json,
             ARGINFO_PARSE_JSON
         ),
         func_entry!(
-            b"dory_mago_parse_file_json\0",
-            zif_dory_mago_parse_file_json,
+            b"dory_code_parse_file_json\0",
+            zif_dory_code_parse_file_json,
             ARGINFO_PARSE_FILE_JSON
         ),
     ];

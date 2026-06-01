@@ -47,7 +47,6 @@ download-options:
   prefer-binary: true
   custom-url:
     - openssl:https://github.com/openssl/openssl/releases/download/openssl-3.4.1/openssl-3.4.1.tar.gz
-    - ncurses:https://ftp.gnu.org/gnu/ncurses/ncurses-6.6.tar.gz
 
 craft-options:
   doctor: true

@@ -30,7 +30,7 @@ struct SourceMap {
 
 #[derive(Debug, Serialize)]
 struct SourceFileRecord {
-    id: u64,
+    id: String,
     name: String,
     wrapped: bool,
 }
@@ -144,7 +144,7 @@ fn parse_file_payload(source: &AnalysisSource) -> String {
     let payload = ParsePayload {
         ok: true,
         file: SourceFileRecord {
-            id: file.id.as_u64(),
+            id: file.id.as_u64().to_string(),
             name: String::from_utf8_lossy(&file.name).into_owned(),
             wrapped: source.map.wrapped,
         },

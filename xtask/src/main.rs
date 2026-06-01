@@ -47,7 +47,7 @@ fn find_php() -> String {
             return s;
         }
     }
-    
+
     for candidate in [
         "/opt/homebrew/opt/php@8.4/bin/php",
         "/opt/homebrew/bin/php",
@@ -58,7 +58,7 @@ fn find_php() -> String {
             return candidate.to_string();
         }
     }
-    
+
     "php".to_string()
 }
 
@@ -126,7 +126,7 @@ fn run_test(root: &PathBuf) -> ExitCode {
     }
 
     eprintln!(":: Running integration tests...");
-    
+
     let status = Command::new("cargo")
         .args(["test", "--package", "dory", "--", "--ignored"])
         .current_dir(root)
@@ -151,7 +151,7 @@ fn run_check(root: &PathBuf) -> ExitCode {
     }
 
     eprintln!(":: Checking dory...");
-    
+
     let status = Command::new("cargo")
         .args(["check", "--package", "dory"])
         .current_dir(root)

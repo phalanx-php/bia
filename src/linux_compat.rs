@@ -18,15 +18,8 @@ pub unsafe extern "C" fn res_init() -> c_int {
     unsafe { glibc_res_init() }
 }
 
-#[unsafe(export_name = "_ZNSt3__113__hash_memoryEPKvm")]
-pub unsafe extern "C" fn dory_libcpp_hash_memory(key: *const c_void, len: size_t) -> size_t {
-    let bytes = unsafe { std::slice::from_raw_parts(key.cast::<u8>(), len) };
-    let mut hash = 14_695_981_039_346_656_037usize;
-
-    for byte in bytes {
-        hash ^= usize::from(*byte);
-        hash = hash.wrapping_mul(1_099_511_628_211usize);
-    }
-
-    hash
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn issetugid() -> c_int {
+    // Fake the BSD issetugid check (returning 0 means "not setuid/setgid")
+    0
 }
