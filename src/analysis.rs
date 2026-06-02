@@ -64,8 +64,11 @@ pub(crate) fn parse_source_bytes(source: &[u8], name: Option<&str>) -> ParsePayl
     let name = name
         .filter(|name| !name.trim().is_empty())
         .unwrap_or(DEFAULT_INLINE_NAME);
+
     let (source, map) = SourceMap::inline(source);
+
     let file = File::ephemeral(Cow::Owned(name.as_bytes().to_vec()), Cow::Owned(source));
+
     let source = AnalysisSource { file, map };
 
     parse_file_payload_record(&source)
@@ -91,6 +94,7 @@ fn decode_hex(hex: &str) -> Result<Vec<u8>, String> {
         .chunks_exact(2)
         .map(|chunk| {
             let high = decode_hex_digit(chunk[0])?;
+
             let low = decode_hex_digit(chunk[1])?;
 
             Ok((high << 4) | low)
@@ -109,11 +113,14 @@ fn decode_hex_digit(byte: u8) -> Result<u8, String> {
 
 pub(crate) fn parse_file_path(path: &str) -> Result<ParsePayload, String> {
     let path = Path::new(path);
+
     let workspace = std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+
     let file = match File::read(&workspace, path, FileType::Host) {
         Ok(file) => file,
         Err(error) => return Err(format!("failed to read PHP source file: {error}")),
     };
+
     let source = AnalysisSource {
         map: SourceMap::file(&file),
         file,
@@ -136,16 +143,22 @@ pub(crate) fn parse_project_file_payload(relative: &str, contents: Vec<u8>) -> P
 
 fn parse_file_payload_record(source: &AnalysisSource) -> ParsePayload {
     let arena = Bump::new();
+
     let file = &source.file;
+
     let program = parse_file(&arena, file);
+
     let (tokens, lexer_errors) = collect_tokens(source);
+
     let errors = dedupe_errors(
         collect_errors(source, program)
             .into_iter()
             .chain(lexer_errors)
             .collect(),
     );
+
     let declarations = collect_declarations(source, program);
+
     let (nodes, references) = projection::collect_search_projection(source, program);
 
     ParsePayload {
@@ -218,6 +231,7 @@ impl SourceMap {
 
     fn span_record(&self, span: Span) -> SpanRecord {
         let start_offset = self.source_offset(span.start.offset);
+
         let end_offset = self.source_offset(span.end.offset);
 
         SpanRecord {
@@ -367,7 +381,9 @@ fn collect_statement_declarations(
             }
             Statement::Class(class) => {
                 let name = local_name(&class.name);
+
                 let fqn = qualified_name(context.namespace.as_deref(), &name);
+
                 declarations.push(declaration(
                     source,
                     "class",
@@ -378,6 +394,7 @@ fn collect_statement_declarations(
                     class.span(),
                     class.name.span(),
                 ));
+
                 collect_member_declarations(
                     source,
                     &context.for_type(fqn),
@@ -387,7 +404,9 @@ fn collect_statement_declarations(
             }
             Statement::Interface(interface) => {
                 let name = local_name(&interface.name);
+
                 let fqn = qualified_name(context.namespace.as_deref(), &name);
+
                 declarations.push(declaration(
                     source,
                     "interface",
@@ -398,6 +417,7 @@ fn collect_statement_declarations(
                     interface.span(),
                     interface.name.span(),
                 ));
+
                 collect_member_declarations(
                     source,
                     &context.for_type(fqn),
@@ -447,7 +467,9 @@ fn collect_trait_declarations(
     declarations: &mut Vec<DeclarationRecord>,
 ) {
     let name = local_name(&r#trait.name);
+
     let fqn = qualified_name(context.namespace.as_deref(), &name);
+
     declarations.push(declaration(
         source,
         "trait",
@@ -458,6 +480,7 @@ fn collect_trait_declarations(
         r#trait.span(),
         r#trait.name.span(),
     ));
+
     collect_member_declarations(
         source,
         &context.for_type(fqn),
@@ -473,7 +496,9 @@ fn collect_enum_declarations(
     declarations: &mut Vec<DeclarationRecord>,
 ) {
     let name = local_name(&r#enum.name);
+
     let fqn = qualified_name(context.namespace.as_deref(), &name);
+
     declarations.push(declaration(
         source,
         "enum",
@@ -484,6 +509,7 @@ fn collect_enum_declarations(
         r#enum.span(),
         r#enum.name.span(),
     ));
+
     collect_member_declarations(
         source,
         &context.for_type(fqn),
@@ -579,6 +605,7 @@ fn collect_method_declaration(
     let Some(declaring_type) = context.declaring_type.as_deref() else {
         return;
     };
+
     let name = local_name(&method.name);
 
     declarations.push(declaration(
@@ -625,6 +652,7 @@ fn collect_property_item(
         PropertyItem::Abstract(item) => &item.variable,
         PropertyItem::Concrete(item) => &item.variable,
     };
+
     let name = String::from_utf8_lossy(variable.name).into_owned();
 
     declarations.push(declaration(

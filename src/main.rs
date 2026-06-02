@@ -51,13 +51,17 @@ fn run() -> Result<ExitCode, DoryError> {
     .map_err(|error| DoryError::from_error("failed to configure SAPI", error))?;
 
     let php = RiphtSapi::instance();
+
     php.set_ini("swoole.use_shortname", "Off")
         .map_err(|error| DoryError::from_error("failed to set swoole.use_shortname", error))?;
+
     php.set_ini("memory_limit", "512M")
         .map_err(|error| DoryError::from_error("failed to set memory_limit", error))?;
 
     let shutdown = Arc::new(AtomicBool::new(false));
+
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown)).ok();
+
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&shutdown)).ok();
 
     let runtime_dir = runtime.runtime_path().to_string_lossy().into_owned();
@@ -67,21 +71,28 @@ fn run() -> Result<ExitCode, DoryError> {
 
     let exit_file = NamedTempFile::new()
         .map_err(|error| DoryError::from_error("failed to create exit code file", error))?;
+
     let exit_path = exit_file.path().to_string_lossy().into_owned();
 
     let (_inline_file, args_json) = match &run_mode {
         RunMode::Inline(code) => {
             let wrapped = inline::wrap_inline_code(code);
+
             let mut f = NamedTempFile::with_suffix(".php").map_err(|error| {
                 DoryError::from_error("failed to create inline script file", error)
             })?;
+
             f.write_all(wrapped.as_bytes())
                 .map_err(|error| DoryError::from_error("failed to write inline script", error))?;
+
             f.flush()
                 .map_err(|error| DoryError::from_error("failed to flush inline script", error))?;
+
             let path = f.path().to_string_lossy().into_owned();
+
             let json = serde_json::to_string(&["run", &path])
                 .map_err(|error| DoryError::from_error("failed to serialize args", error))?;
+
             (Some(f), json)
         }
         RunMode::File(path) => {

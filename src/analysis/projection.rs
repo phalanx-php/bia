@@ -58,9 +58,11 @@ impl<'ast, 'arena, 'source> Walker<'ast, 'arena, ProjectionContext<'source>> for
         context: &mut ProjectionContext<'source>,
     ) {
         let name = local_name(&class.name);
+
         let fqn = qualified_name(context.namespace.as_deref(), &name);
 
         context.push_node("class", Some(name), class.span());
+
         context.context_stack.push(fqn);
     }
 
@@ -78,9 +80,11 @@ impl<'ast, 'arena, 'source> Walker<'ast, 'arena, ProjectionContext<'source>> for
         context: &mut ProjectionContext<'source>,
     ) {
         let name = local_name(&interface.name);
+
         let fqn = qualified_name(context.namespace.as_deref(), &name);
 
         context.push_node("interface", Some(name), interface.span());
+
         context.context_stack.push(fqn);
     }
 
@@ -98,9 +102,11 @@ impl<'ast, 'arena, 'source> Walker<'ast, 'arena, ProjectionContext<'source>> for
         context: &mut ProjectionContext<'source>,
     ) {
         let name = local_name(&r#trait.name);
+
         let fqn = qualified_name(context.namespace.as_deref(), &name);
 
         context.push_node("trait", Some(name), r#trait.span());
+
         context.context_stack.push(fqn);
     }
 
@@ -118,9 +124,11 @@ impl<'ast, 'arena, 'source> Walker<'ast, 'arena, ProjectionContext<'source>> for
         context: &mut ProjectionContext<'source>,
     ) {
         let name = local_name(&r#enum.name);
+
         let fqn = qualified_name(context.namespace.as_deref(), &name);
 
         context.push_node("enum", Some(name), r#enum.span());
+
         context.context_stack.push(fqn);
     }
 
@@ -138,9 +146,11 @@ impl<'ast, 'arena, 'source> Walker<'ast, 'arena, ProjectionContext<'source>> for
         context: &mut ProjectionContext<'source>,
     ) {
         let name = local_name(&function.name);
+
         let fqn = qualified_name(context.namespace.as_deref(), &name);
 
         context.push_node("function", Some(name), function.span());
+
         context.context_stack.push(fqn);
     }
 
@@ -158,12 +168,14 @@ impl<'ast, 'arena, 'source> Walker<'ast, 'arena, ProjectionContext<'source>> for
         context: &mut ProjectionContext<'source>,
     ) {
         let name = local_name(&method.name);
+
         let fqn = context.current_context().map_or_else(
             || name.clone(),
             |declaring_type| member_name(&declaring_type, &name),
         );
 
         context.push_node("method", Some(name), method.span());
+
         context.context_stack.push(fqn);
     }
 

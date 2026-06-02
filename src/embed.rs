@@ -19,7 +19,9 @@ impl EmbeddedRuntime {
         archive.unpack(runtime_dir.path())?;
 
         let mut bootstrap = NamedTempFile::with_suffix(".php")?;
+
         bootstrap.write_all(BOOTSTRAP_BYTES)?;
+
         bootstrap.flush()?;
 
         Ok(Self {

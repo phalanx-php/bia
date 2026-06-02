@@ -18,11 +18,10 @@ Slim vars: inline -r code auto-adds $ to 1-2 lowercase letter variables.
   Bad:  if, do, fn, or, as  (reserved keywords)
 
 For normal PHP variables, use a heredoc:
-  dory -r "$(cat <<'PHP'
+  dory -r "<<'PHP'
   $longName = fetchData();
   dory()->dump($longName);
-  PHP
-  )"
+  PHP"
 "#
 )]
 pub struct DoryCli {

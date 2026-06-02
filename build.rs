@@ -19,6 +19,7 @@ fn main() {
         });
 
     let lib_dir = prefix.join("lib");
+
     let link_flags = lib_dir.join("dory-link-flags.txt");
 
     println!("cargo:rerun-if-changed={}", prefix.display());
@@ -46,6 +47,7 @@ fn main() {
     );
 
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
+
     println!("cargo:rustc-link-lib=static=php");
 
     let mut libs = fs::read_dir(&lib_dir)

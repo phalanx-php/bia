@@ -55,6 +55,7 @@ impl CodeQueryEngine {
         query: &DeclarationQuery,
     ) -> Result<DeclarationQueryPayload, String> {
         let index = self.project_cache.index(root)?;
+
         let declarations = index
             .declarations
             .into_iter()
@@ -75,6 +76,7 @@ impl CodeQueryEngine {
         query: &TokenQuery,
     ) -> Result<TokenQueryPayload, String> {
         let index = self.project_cache.index(root)?;
+
         let tokens = index
             .tokens
             .into_iter()
@@ -95,6 +97,7 @@ impl CodeQueryEngine {
         query: &NodeQuery,
     ) -> Result<NodeQueryPayload, String> {
         let index = self.project_cache.index(root)?;
+
         let nodes = index
             .nodes
             .into_iter()
@@ -115,6 +118,7 @@ impl CodeQueryEngine {
         query: &ReferenceQuery,
     ) -> Result<ReferenceQueryPayload, String> {
         let index = self.project_cache.index(root)?;
+
         let references = index
             .references
             .into_iter()

@@ -154,7 +154,9 @@ fn collect_project_files_into(
 
     for entry in entries {
         let entry = entry.map_err(|error| format!("failed to read project entry: {error}"))?;
+
         let path = entry.path();
+
         let file_type = entry
             .file_type()
             .map_err(|error| format!("failed to inspect project entry: {error}"))?;
@@ -174,16 +176,19 @@ fn collect_project_files_into(
         let metadata = entry
             .metadata()
             .map_err(|error| format!("failed to inspect PHP source file: {error}"))?;
+
         let relative = path
             .strip_prefix(root)
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
+
         let modified_ns = metadata
             .modified()
             .ok()
             .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
             .map_or(0, |duration| duration.as_nanos());
+
         let contents = match fs::read(&path) {
             Ok(contents) => contents,
             Err(error) => {
@@ -195,6 +200,7 @@ fn collect_project_files_into(
                 continue;
             }
         };
+
         let content_hash = content_hash(&contents);
 
         files.push(ProjectFile {
@@ -245,30 +251,35 @@ fn build_project_index(root: String, scan: ProjectScan) -> IndexedProject {
         let payload = parse_project_file_payload(&file.relative, file.contents);
 
         indexed.files.push(payload.file);
+
         indexed.errors.extend(
             payload
                 .errors
                 .into_iter()
                 .map(|error| error.with_file(&file.relative)),
         );
+
         indexed.tokens.extend(
             payload
                 .tokens
                 .into_iter()
                 .map(|token| token.with_file(&file.relative)),
         );
+
         indexed.declarations.extend(
             payload
                 .declarations
                 .into_iter()
                 .map(|declaration| declaration.with_file(&file.relative)),
         );
+
         indexed.nodes.extend(
             payload
                 .nodes
                 .into_iter()
                 .map(|node| node.with_file(&file.relative)),
         );
+
         indexed.references.extend(
             payload
                 .references
