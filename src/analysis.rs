@@ -6,12 +6,15 @@ use bumpalo::Bump;
 use mago_database::file::{File, FileType};
 use mago_span::{HasSpan, Span};
 use mago_syntax::ast::{
-    ClassLikeMember, Constant, Enum, Function, Identifier, LocalIdentifier, Method, Namespace,
-    Program, Property, PropertyItem, Statement, Trait,
+    ClassLikeConstantSelector, ClassLikeMember, ClassLikeMemberSelector, Constant, DirectVariable,
+    Enum, Expression, Function, FunctionCall, Identifier, LocalIdentifier, Method, MethodCall,
+    Namespace, NullSafeMethodCall, Program, Property, PropertyItem, Statement, StaticMethodCall,
+    Trait,
 };
 use mago_syntax::lexer::Lexer;
 use mago_syntax::parser::parse_file;
 use mago_syntax::settings::LexerSettings;
+use mago_syntax::walker::{Walker, walk_program};
 use mago_syntax_core::input::Input;
 use serde::Serialize;
 
@@ -23,9 +26,10 @@ mod request;
 
 #[cfg(test)]
 pub use engine::dispatch_query_json;
-pub use engine::{error_json, CodeQueryEngine};
+pub use engine::{CodeQueryEngine, error_json};
 use records::{
-    DeclarationRecord, ParseErrorRecord, ParsePayload, SourceFileRecord, SpanRecord, TokenRecord,
+    CodeNodeRecord, DeclarationRecord, ParseErrorRecord, ParsePayload, ReferenceRecord,
+    SourceFileRecord, SpanRecord, TokenRecord,
 };
 
 const INLINE_PREFIX: &str = "<?php\n";
@@ -48,6 +52,16 @@ struct DeclarationContext {
     namespace: Option<String>,
     declaring_type: Option<String>,
 }
+
+struct SearchProjectionContext<'source> {
+    source: &'source AnalysisSource,
+    namespace: Option<String>,
+    context_stack: Vec<String>,
+    nodes: Vec<CodeNodeRecord>,
+    references: Vec<ReferenceRecord>,
+}
+
+struct SearchProjectionWalker;
 
 #[cfg(test)]
 fn parse_source_json(source: &str, name: Option<&str>) -> String {
@@ -145,6 +159,7 @@ fn parse_file_payload_record(source: &AnalysisSource) -> ParsePayload {
             .collect(),
     );
     let declarations = collect_declarations(source, program);
+    let (nodes, references) = collect_search_projection(source, program);
 
     ParsePayload {
         ok: true,
@@ -157,6 +172,8 @@ fn parse_file_payload_record(source: &AnalysisSource) -> ParsePayload {
         errors,
         tokens,
         declarations,
+        nodes,
+        references,
     }
 }
 
@@ -333,6 +350,23 @@ fn collect_declarations(source: &AnalysisSource, program: &Program<'_>) -> Vec<D
         &mut declarations,
     );
     declarations
+}
+
+fn collect_search_projection(
+    source: &AnalysisSource,
+    program: &Program<'_>,
+) -> (Vec<CodeNodeRecord>, Vec<ReferenceRecord>) {
+    let mut context = SearchProjectionContext {
+        source,
+        namespace: None,
+        context_stack: Vec::new(),
+        nodes: Vec::new(),
+        references: Vec::new(),
+    };
+
+    walk_program(&SearchProjectionWalker, program, &mut context);
+
+    (context.nodes, context.references)
 }
 
 fn collect_statement_declarations(
@@ -662,6 +696,300 @@ fn member_name(declaring_type: &str, name: &str) -> String {
     format!("{declaring_type}::{name}")
 }
 
+impl<'ast, 'arena, 'source> Walker<'ast, 'arena, SearchProjectionContext<'source>>
+    for SearchProjectionWalker
+{
+    fn walk_in_namespace(
+        &self,
+        namespace: &'ast Namespace<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        context.namespace = namespace.name.as_ref().map(identifier_name);
+    }
+
+    fn walk_out_namespace(
+        &self,
+        _namespace: &'ast Namespace<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        context.namespace = None;
+    }
+
+    fn walk_in_class(
+        &self,
+        class: &'ast mago_syntax::ast::Class<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        let name = local_name(&class.name);
+        let fqn = qualified_name(context.namespace.as_deref(), &name);
+        context.push_node("class", Some(name), class.span());
+        context.context_stack.push(fqn);
+    }
+
+    fn walk_out_class(
+        &self,
+        _class: &'ast mago_syntax::ast::Class<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        context.context_stack.pop();
+    }
+
+    fn walk_in_interface(
+        &self,
+        interface: &'ast mago_syntax::ast::Interface<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        let name = local_name(&interface.name);
+        let fqn = qualified_name(context.namespace.as_deref(), &name);
+        context.push_node("interface", Some(name), interface.span());
+        context.context_stack.push(fqn);
+    }
+
+    fn walk_out_interface(
+        &self,
+        _interface: &'ast mago_syntax::ast::Interface<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        context.context_stack.pop();
+    }
+
+    fn walk_in_trait(
+        &self,
+        r#trait: &'ast Trait<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        let name = local_name(&r#trait.name);
+        let fqn = qualified_name(context.namespace.as_deref(), &name);
+        context.push_node("trait", Some(name), r#trait.span());
+        context.context_stack.push(fqn);
+    }
+
+    fn walk_out_trait(
+        &self,
+        _trait: &'ast Trait<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        context.context_stack.pop();
+    }
+
+    fn walk_in_enum(
+        &self,
+        r#enum: &'ast Enum<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        let name = local_name(&r#enum.name);
+        let fqn = qualified_name(context.namespace.as_deref(), &name);
+        context.push_node("enum", Some(name), r#enum.span());
+        context.context_stack.push(fqn);
+    }
+
+    fn walk_out_enum(
+        &self,
+        _enum: &'ast Enum<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        context.context_stack.pop();
+    }
+
+    fn walk_in_function(
+        &self,
+        function: &'ast Function<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        let name = local_name(&function.name);
+        let fqn = qualified_name(context.namespace.as_deref(), &name);
+        context.push_node("function", Some(name), function.span());
+        context.context_stack.push(fqn);
+    }
+
+    fn walk_out_function(
+        &self,
+        _function: &'ast Function<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        context.context_stack.pop();
+    }
+
+    fn walk_in_method(
+        &self,
+        method: &'ast Method<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        let name = local_name(&method.name);
+        let fqn = context.current_context().map_or_else(
+            || name.clone(),
+            |declaring_type| member_name(&declaring_type, &name),
+        );
+        context.push_node("method", Some(name), method.span());
+        context.context_stack.push(fqn);
+    }
+
+    fn walk_out_method(
+        &self,
+        _method: &'ast Method<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        context.context_stack.pop();
+    }
+
+    fn walk_in_direct_variable(
+        &self,
+        variable: &'ast DirectVariable<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        let name = String::from_utf8_lossy(variable.name).into_owned();
+        context.push_reference("variable", name, variable.span());
+    }
+
+    fn walk_in_function_call(
+        &self,
+        call: &'ast FunctionCall<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        if let Some(name) = expression_identifier(call.function) {
+            context.push_reference("function", name.clone(), call.function.span());
+            context.push_node("function-call", Some(name), call.span());
+        }
+    }
+
+    fn walk_in_method_call(
+        &self,
+        call: &'ast MethodCall<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        if let Some(name) = member_selector_name(&call.method) {
+            context.push_reference("method", name.clone(), call.method.span());
+            context.push_node("method-call", Some(name), call.span());
+        }
+    }
+
+    fn walk_in_null_safe_method_call(
+        &self,
+        call: &'ast NullSafeMethodCall<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        if let Some(name) = member_selector_name(&call.method) {
+            context.push_reference("method", name.clone(), call.method.span());
+            context.push_node("null-safe-method-call", Some(name), call.span());
+        }
+    }
+
+    fn walk_in_static_method_call(
+        &self,
+        call: &'ast StaticMethodCall<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        if let Some(name) = member_selector_name(&call.method) {
+            context.push_reference("static-method", name.clone(), call.method.span());
+            context.push_node("static-method-call", Some(name), call.span());
+        }
+    }
+
+    fn walk_in_constant_access(
+        &self,
+        access: &'ast mago_syntax::ast::ConstantAccess<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        let name = identifier_name(&access.name);
+        context.push_reference("constant", name, access.span());
+    }
+
+    fn walk_in_property_access(
+        &self,
+        access: &'ast mago_syntax::ast::PropertyAccess<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        if let Some(name) = member_selector_name(&access.property) {
+            context.push_reference("property", name.clone(), access.property.span());
+            context.push_node("property-access", Some(name), access.span());
+        }
+    }
+
+    fn walk_in_null_safe_property_access(
+        &self,
+        access: &'ast mago_syntax::ast::NullSafePropertyAccess<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        if let Some(name) = member_selector_name(&access.property) {
+            context.push_reference("property", name.clone(), access.property.span());
+            context.push_node("null-safe-property-access", Some(name), access.span());
+        }
+    }
+
+    fn walk_in_class_constant_access(
+        &self,
+        access: &'ast mago_syntax::ast::ClassConstantAccess<'arena>,
+        context: &mut SearchProjectionContext<'source>,
+    ) {
+        if let Some(name) = class_constant_selector_name(&access.constant) {
+            context.push_reference("class-constant", name.clone(), access.constant.span());
+            context.push_node("class-constant-access", Some(name), access.span());
+        }
+    }
+}
+
+impl SearchProjectionContext<'_> {
+    fn current_context(&self) -> Option<String> {
+        self.context_stack.last().cloned()
+    }
+
+    fn push_node(&mut self, kind: &'static str, name: Option<String>, span: Span) {
+        if !self.source.map.contains_source_span(span) {
+            return;
+        }
+
+        self.nodes.push(CodeNodeRecord {
+            kind,
+            name,
+            span: self.source.map.span_record(span),
+            context: self.current_context(),
+            file: None,
+        });
+    }
+
+    fn push_reference(&mut self, kind: &'static str, name: String, span: Span) {
+        if !self.source.map.contains_source_span(span) {
+            return;
+        }
+
+        self.nodes.push(CodeNodeRecord {
+            kind,
+            name: Some(name.clone()),
+            span: self.source.map.span_record(span),
+            context: self.current_context(),
+            file: None,
+        });
+        self.references.push(ReferenceRecord {
+            kind,
+            name,
+            span: self.source.map.span_record(span),
+            context: self.current_context(),
+            file: None,
+        });
+    }
+}
+
+fn expression_identifier(expression: &Expression<'_>) -> Option<String> {
+    match expression.unparenthesized() {
+        Expression::Identifier(identifier) => Some(identifier_name(identifier)),
+        _ => None,
+    }
+}
+
+fn member_selector_name(selector: &ClassLikeMemberSelector<'_>) -> Option<String> {
+    match selector {
+        ClassLikeMemberSelector::Identifier(identifier) => Some(local_name(identifier)),
+        _ => None,
+    }
+}
+
+fn class_constant_selector_name(selector: &ClassLikeConstantSelector<'_>) -> Option<String> {
+    match selector {
+        ClassLikeConstantSelector::Identifier(identifier) => Some(local_name(identifier)),
+        _ => None,
+    }
+}
+
 impl DeclarationContext {
     fn for_type(&self, declaring_type: String) -> Self {
         Self {
@@ -781,6 +1109,53 @@ mod tests {
     }
 
     #[test]
+    fn records_search_nodes_and_references() {
+        let json = parse_source_json(
+            r#"namespace App;
+            class Demo {
+                public function run(): void {
+                    $value = helper($this->name());
+                }
+            }"#,
+            Some("demo.php"),
+        );
+        let payload: Value = serde_json::from_str(&json).expect("valid parse payload");
+
+        assert_eq!(payload["nodes"][0]["kind"], "class");
+        assert_eq!(payload["nodes"][0]["name"], "Demo");
+        assert_eq!(payload["references"][0]["kind"], "variable");
+        assert_eq!(payload["references"][0]["name"], "$value");
+        assert!(
+            payload["references"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|reference| reference["kind"] == "function" && reference["name"] == "helper")
+        );
+        assert!(
+            payload["references"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|reference| reference["kind"] == "method" && reference["name"] == "name")
+        );
+        assert!(
+            payload["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|node| node["kind"] == "function-call" && node["name"] == "helper")
+        );
+        assert!(
+            payload["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|node| node["kind"] == "method-call" && node["name"] == "name")
+        );
+    }
+
+    #[test]
     fn dispatches_parse_source_queries() {
         let json = dispatch_query_json(
             r#"{"op":"parse_source","source":"class Demo {}","name":"demo.php"}"#,
@@ -837,6 +1212,49 @@ mod tests {
         assert_eq!(payload["declarations"].as_array().unwrap().len(), 1);
         assert_eq!(payload["declarations"][0]["file"], "src/Example.php");
         assert_eq!(payload["declarations"][0]["fqn"], "App\\Example");
+    }
+
+    #[test]
+    fn queries_project_nodes_and_references() {
+        let project = TestProject::new("nodes");
+        let root = project.root.to_string_lossy().into_owned();
+        project.write_source(
+            "src/Example.php",
+            "<?php namespace App; final class Example { public function run(): void { $value = helper(); } }",
+        );
+
+        let nodes = serde_json::json!({
+            "op": "query_nodes",
+            "root": root,
+            "query": {"kind": "method", "name": "run", "file": "src/Example.php"}
+        });
+        let payload: Value =
+            serde_json::from_str(&dispatch_query_json(&nodes.to_string())).expect("valid payload");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["nodes"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["nodes"][0]["context"], "App\\Example");
+
+        let references = serde_json::json!({
+            "op": "query_references",
+            "root": project.root.to_string_lossy(),
+            "query": {"kind": "function", "name": "helper"}
+        });
+        let payload: Value = serde_json::from_str(&dispatch_query_json(&references.to_string()))
+            .expect("valid payload");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["references"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["references"][0]["file"], "src/Example.php");
+        assert_eq!(payload["references"][0]["context"], "App\\Example::run");
+
+        let all_nodes = serde_json::json!({
+            "op": "query_nodes",
+            "root": project.root.to_string_lossy(),
+            "query": {}
+        });
+        let payload: Value = serde_json::from_str(&dispatch_query_json(&all_nodes.to_string()))
+            .expect("valid payload");
+        assert_eq!(payload["ok"], true);
+        assert!(payload["nodes"].as_array().unwrap().len() >= 4);
     }
 
     #[test]

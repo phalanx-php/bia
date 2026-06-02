@@ -56,12 +56,12 @@ fn main() {
     libs.sort();
 
     for path in libs {
-        if path.extension().is_some_and(|ext| ext == "a") {
-            if let Some(file_name) = path.file_stem().and_then(|name| name.to_str()) {
-                if file_name.starts_with("lib") && file_name != "libphp" {
-                    println!("cargo:rustc-link-lib=static={}", &file_name[3..]);
-                }
-            }
+        if path.extension().is_some_and(|ext| ext == "a")
+            && let Some(file_name) = path.file_stem().and_then(|name| name.to_str())
+            && file_name.starts_with("lib")
+            && file_name != "libphp"
+        {
+            println!("cargo:rustc-link-lib=static={}", &file_name[3..]);
         }
     }
 

@@ -1,6 +1,6 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use ripht_php_sapi::{ExecutionHooks, ExecutionMessage, OutputAction};
 

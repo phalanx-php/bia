@@ -66,6 +66,40 @@ impl DeclarationRecord {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct CodeNodeRecord {
+    pub(crate) kind: &'static str,
+    pub(crate) name: Option<String>,
+    pub(crate) span: SpanRecord,
+    pub(crate) context: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) file: Option<String>,
+}
+
+impl CodeNodeRecord {
+    pub(crate) fn with_file(mut self, file: &str) -> Self {
+        self.file = Some(file.to_string());
+        self
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct ReferenceRecord {
+    pub(crate) kind: &'static str,
+    pub(crate) name: String,
+    pub(crate) span: SpanRecord,
+    pub(crate) context: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) file: Option<String>,
+}
+
+impl ReferenceRecord {
+    pub(crate) fn with_file(mut self, file: &str) -> Self {
+        self.file = Some(file.to_string());
+        self
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct ParsePayload {
     pub(crate) ok: bool,
@@ -74,6 +108,8 @@ pub(crate) struct ParsePayload {
     pub(crate) errors: Vec<ParseErrorRecord>,
     pub(crate) tokens: Vec<TokenRecord>,
     pub(crate) declarations: Vec<DeclarationRecord>,
+    pub(crate) nodes: Vec<CodeNodeRecord>,
+    pub(crate) references: Vec<ReferenceRecord>,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +126,8 @@ pub(crate) struct ProjectIndexPayload {
     pub(crate) file_count: usize,
     pub(crate) declaration_count: usize,
     pub(crate) token_count: usize,
+    pub(crate) node_count: usize,
+    pub(crate) reference_count: usize,
     pub(crate) errors: Vec<ParseErrorRecord>,
 }
 
@@ -106,5 +144,21 @@ pub(crate) struct TokenQueryPayload {
     pub(crate) ok: bool,
     pub(crate) root: String,
     pub(crate) tokens: Vec<TokenRecord>,
+    pub(crate) errors: Vec<ParseErrorRecord>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct NodeQueryPayload {
+    pub(crate) ok: bool,
+    pub(crate) root: String,
+    pub(crate) nodes: Vec<CodeNodeRecord>,
+    pub(crate) errors: Vec<ParseErrorRecord>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct ReferenceQueryPayload {
+    pub(crate) ok: bool,
+    pub(crate) root: String,
+    pub(crate) references: Vec<ReferenceRecord>,
     pub(crate) errors: Vec<ParseErrorRecord>,
 }

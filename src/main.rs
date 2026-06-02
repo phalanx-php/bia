@@ -12,8 +12,8 @@ mod run_mode;
 
 use std::io::Write;
 use std::process::ExitCode;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use clap::Parser;
 use error::DoryError;
@@ -95,7 +95,7 @@ fn run() -> Result<ExitCode, DoryError> {
             (None, json)
         }
         RunMode::FileNotFound(path) => {
-            return Err(DoryError::new(format!("script not found: {path}")))
+            return Err(DoryError::new(format!("script not found: {path}")));
         }
     };
 

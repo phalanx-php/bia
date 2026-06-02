@@ -1,5 +1,5 @@
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -8,7 +8,8 @@ use std::time::UNIX_EPOCH;
 
 use super::parse_project_file_payload;
 use super::records::{
-    DeclarationRecord, ParseErrorRecord, SourceFileRecord, SpanRecord, TokenRecord,
+    CodeNodeRecord, DeclarationRecord, ParseErrorRecord, ReferenceRecord, SourceFileRecord,
+    SpanRecord, TokenRecord,
 };
 
 const PROJECT_CACHE_LIMIT: usize = 8;
@@ -32,12 +33,11 @@ impl ProjectIndexCache {
         let root_key = root_path.to_string_lossy().into_owned();
         let scan = scan_project_files(&root_path)?;
 
-        if let Ok(cache) = self.entries.lock() {
-            if let Some(index) = cache.get(&root_key) {
-                if index.fingerprint == scan.fingerprint {
-                    return Ok(index.clone());
-                }
-            }
+        if let Ok(cache) = self.entries.lock()
+            && let Some(index) = cache.get(&root_key)
+            && index.fingerprint == scan.fingerprint
+        {
+            return Ok(index.clone());
         }
 
         let index = build_project_index(root_key.clone(), scan);
@@ -71,6 +71,8 @@ pub(crate) struct IndexedProject {
     pub(crate) files: Vec<SourceFileRecord>,
     pub(crate) declarations: Vec<DeclarationRecord>,
     pub(crate) tokens: Vec<TokenRecord>,
+    pub(crate) nodes: Vec<CodeNodeRecord>,
+    pub(crate) references: Vec<ReferenceRecord>,
     pub(crate) errors: Vec<ParseErrorRecord>,
 }
 
@@ -126,7 +128,9 @@ fn scan_project_files(root: &Path) -> Result<ProjectScan, String> {
     let mut files = Vec::new();
     let mut errors = Vec::new();
     collect_project_files_into(root, root, &mut files, &mut errors)?;
+
     files.sort_by(|left, right| left.relative.cmp(&right.relative));
+
     let fingerprint = files
         .iter()
         .map(|file| file.fingerprint.clone())
@@ -232,6 +236,8 @@ fn build_project_index(root: String, scan: ProjectScan) -> IndexedProject {
         files: Vec::new(),
         declarations: Vec::new(),
         tokens: Vec::new(),
+        nodes: Vec::new(),
+        references: Vec::new(),
         errors: scan.errors,
     };
 
@@ -256,6 +262,18 @@ fn build_project_index(root: String, scan: ProjectScan) -> IndexedProject {
                 .declarations
                 .into_iter()
                 .map(|declaration| declaration.with_file(&file.relative)),
+        );
+        indexed.nodes.extend(
+            payload
+                .nodes
+                .into_iter()
+                .map(|node| node.with_file(&file.relative)),
+        );
+        indexed.references.extend(
+            payload
+                .references
+                .into_iter()
+                .map(|reference| reference.with_file(&file.relative)),
         );
     }
 

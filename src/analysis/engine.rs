@@ -2,9 +2,10 @@ use std::sync::OnceLock;
 
 use super::project::ProjectIndexCache;
 use super::records::{
-    DeclarationQueryPayload, ErrorPayload, ParsePayload, ProjectIndexPayload, TokenQueryPayload,
+    DeclarationQueryPayload, ErrorPayload, NodeQueryPayload, ParsePayload, ProjectIndexPayload,
+    ReferenceQueryPayload, TokenQueryPayload,
 };
-use super::request::{CodeQueryRequest, DeclarationQuery, TokenQuery};
+use super::request::{CodeQueryRequest, DeclarationQuery, NodeQuery, ReferenceQuery, TokenQuery};
 
 #[derive(Clone, Debug)]
 pub struct CodeQueryEngine {
@@ -41,6 +42,8 @@ impl CodeQueryEngine {
             file_count: index.files.len(),
             declaration_count: index.declarations.len(),
             token_count: index.tokens.len(),
+            node_count: index.nodes.len(),
+            reference_count: index.references.len(),
             files: index.files,
             errors: index.errors,
         })
@@ -86,6 +89,46 @@ impl CodeQueryEngine {
         })
     }
 
+    pub(crate) fn query_nodes(
+        &self,
+        root: &str,
+        query: &NodeQuery,
+    ) -> Result<NodeQueryPayload, String> {
+        let index = self.project_cache.index(root)?;
+        let nodes = index
+            .nodes
+            .into_iter()
+            .filter(|node| query.matches(node))
+            .collect();
+
+        Ok(NodeQueryPayload {
+            ok: true,
+            root: index.root,
+            nodes,
+            errors: index.errors,
+        })
+    }
+
+    pub(crate) fn query_references(
+        &self,
+        root: &str,
+        query: &ReferenceQuery,
+    ) -> Result<ReferenceQueryPayload, String> {
+        let index = self.project_cache.index(root)?;
+        let references = index
+            .references
+            .into_iter()
+            .filter(|reference| query.matches(reference))
+            .collect();
+
+        Ok(ReferenceQueryPayload {
+            ok: true,
+            root: index.root,
+            references,
+            errors: index.errors,
+        })
+    }
+
     pub fn dispatch_json(&self, request_json: &str) -> String {
         let request = match serde_json::from_str::<CodeQueryRequest>(request_json) {
             Ok(request) => request,
@@ -120,6 +163,16 @@ impl CodeQueryEngine {
                 Ok(payload) => super::encode_json(&payload),
                 Err(error) => error_json(error),
             },
+            CodeQueryRequest::QueryNodes { root, query } => match self.query_nodes(&root, &query) {
+                Ok(payload) => super::encode_json(&payload),
+                Err(error) => error_json(error),
+            },
+            CodeQueryRequest::QueryReferences { root, query } => {
+                match self.query_references(&root, &query) {
+                    Ok(payload) => super::encode_json(&payload),
+                    Err(error) => error_json(error),
+                }
+            }
         }
     }
 }
