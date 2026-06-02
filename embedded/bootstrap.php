@@ -61,6 +61,7 @@ $exitCode = \Phalanx\Archon\Application\Archon::starting($context)
         new \Phalanx\Hermes\WsServiceBundle(),
     )
     ->commands(\Phalanx\Dory\Command\DoryCommandGroup::commands())
+    ->withErrorRenderers(new \Phalanx\Dory\Console\ScriptFaultRenderer())
     ->withConsoleConfig(new \Phalanx\Archon\Application\ConsoleConfig(
         argv: array_slice($argv, 1),
         defaultCommand: 'help',
