@@ -87,6 +87,7 @@ impl CodeNodeRecord {
 pub(crate) struct ReferenceRecord {
     pub(crate) kind: &'static str,
     pub(crate) name: String,
+    pub(crate) receiver: Option<String>,
     pub(crate) span: SpanRecord,
     pub(crate) context: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

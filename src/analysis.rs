@@ -6,20 +6,18 @@ use bumpalo::Bump;
 use mago_database::file::{File, FileType};
 use mago_span::{HasSpan, Span};
 use mago_syntax::ast::{
-    ClassLikeConstantSelector, ClassLikeMember, ClassLikeMemberSelector, Constant, DirectVariable,
-    Enum, Expression, Function, FunctionCall, Identifier, LocalIdentifier, Method, MethodCall,
-    Namespace, NullSafeMethodCall, Program, Property, PropertyItem, Statement, StaticMethodCall,
-    Trait,
+    ClassLikeMember, Constant, Enum, Function, Identifier, LocalIdentifier, Method, Namespace,
+    Program, Property, PropertyItem, Statement, Trait,
 };
 use mago_syntax::lexer::Lexer;
 use mago_syntax::parser::parse_file;
 use mago_syntax::settings::LexerSettings;
-use mago_syntax::walker::{Walker, walk_program};
 use mago_syntax_core::input::Input;
 use serde::Serialize;
 
 mod engine;
 mod project;
+mod projection;
 mod query;
 mod records;
 mod request;
@@ -28,8 +26,7 @@ mod request;
 pub use engine::dispatch_query_json;
 pub use engine::{CodeQueryEngine, error_json};
 use records::{
-    CodeNodeRecord, DeclarationRecord, ParseErrorRecord, ParsePayload, ReferenceRecord,
-    SourceFileRecord, SpanRecord, TokenRecord,
+    DeclarationRecord, ParseErrorRecord, ParsePayload, SourceFileRecord, SpanRecord, TokenRecord,
 };
 
 const INLINE_PREFIX: &str = "<?php\n";
@@ -52,16 +49,6 @@ struct DeclarationContext {
     namespace: Option<String>,
     declaring_type: Option<String>,
 }
-
-struct SearchProjectionContext<'source> {
-    source: &'source AnalysisSource,
-    namespace: Option<String>,
-    context_stack: Vec<String>,
-    nodes: Vec<CodeNodeRecord>,
-    references: Vec<ReferenceRecord>,
-}
-
-struct SearchProjectionWalker;
 
 #[cfg(test)]
 fn parse_source_json(source: &str, name: Option<&str>) -> String {
@@ -159,7 +146,7 @@ fn parse_file_payload_record(source: &AnalysisSource) -> ParsePayload {
             .collect(),
     );
     let declarations = collect_declarations(source, program);
-    let (nodes, references) = collect_search_projection(source, program);
+    let (nodes, references) = projection::collect_search_projection(source, program);
 
     ParsePayload {
         ok: true,
@@ -265,6 +252,21 @@ impl SourceMap {
 
         offset - self.lines[line]
     }
+
+    fn source_text(&self, span: Span) -> Option<String> {
+        if !self.contains_source_span(span) {
+            return None;
+        }
+
+        let start = self.source_offset(span.start.offset) as usize;
+        let end = self.source_offset(span.end.offset) as usize;
+
+        if start > end || end > self.original.len() {
+            return None;
+        }
+
+        Some(String::from_utf8_lossy(&self.original[start..end]).into_owned())
+    }
 }
 
 fn trim_start_ascii(source: &[u8]) -> &[u8] {
@@ -350,23 +352,6 @@ fn collect_declarations(source: &AnalysisSource, program: &Program<'_>) -> Vec<D
         &mut declarations,
     );
     declarations
-}
-
-fn collect_search_projection(
-    source: &AnalysisSource,
-    program: &Program<'_>,
-) -> (Vec<CodeNodeRecord>, Vec<ReferenceRecord>) {
-    let mut context = SearchProjectionContext {
-        source,
-        namespace: None,
-        context_stack: Vec::new(),
-        nodes: Vec::new(),
-        references: Vec::new(),
-    };
-
-    walk_program(&SearchProjectionWalker, program, &mut context);
-
-    (context.nodes, context.references)
 }
 
 fn collect_statement_declarations(
@@ -696,300 +681,6 @@ fn member_name(declaring_type: &str, name: &str) -> String {
     format!("{declaring_type}::{name}")
 }
 
-impl<'ast, 'arena, 'source> Walker<'ast, 'arena, SearchProjectionContext<'source>>
-    for SearchProjectionWalker
-{
-    fn walk_in_namespace(
-        &self,
-        namespace: &'ast Namespace<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        context.namespace = namespace.name.as_ref().map(identifier_name);
-    }
-
-    fn walk_out_namespace(
-        &self,
-        _namespace: &'ast Namespace<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        context.namespace = None;
-    }
-
-    fn walk_in_class(
-        &self,
-        class: &'ast mago_syntax::ast::Class<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        let name = local_name(&class.name);
-        let fqn = qualified_name(context.namespace.as_deref(), &name);
-        context.push_node("class", Some(name), class.span());
-        context.context_stack.push(fqn);
-    }
-
-    fn walk_out_class(
-        &self,
-        _class: &'ast mago_syntax::ast::Class<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        context.context_stack.pop();
-    }
-
-    fn walk_in_interface(
-        &self,
-        interface: &'ast mago_syntax::ast::Interface<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        let name = local_name(&interface.name);
-        let fqn = qualified_name(context.namespace.as_deref(), &name);
-        context.push_node("interface", Some(name), interface.span());
-        context.context_stack.push(fqn);
-    }
-
-    fn walk_out_interface(
-        &self,
-        _interface: &'ast mago_syntax::ast::Interface<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        context.context_stack.pop();
-    }
-
-    fn walk_in_trait(
-        &self,
-        r#trait: &'ast Trait<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        let name = local_name(&r#trait.name);
-        let fqn = qualified_name(context.namespace.as_deref(), &name);
-        context.push_node("trait", Some(name), r#trait.span());
-        context.context_stack.push(fqn);
-    }
-
-    fn walk_out_trait(
-        &self,
-        _trait: &'ast Trait<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        context.context_stack.pop();
-    }
-
-    fn walk_in_enum(
-        &self,
-        r#enum: &'ast Enum<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        let name = local_name(&r#enum.name);
-        let fqn = qualified_name(context.namespace.as_deref(), &name);
-        context.push_node("enum", Some(name), r#enum.span());
-        context.context_stack.push(fqn);
-    }
-
-    fn walk_out_enum(
-        &self,
-        _enum: &'ast Enum<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        context.context_stack.pop();
-    }
-
-    fn walk_in_function(
-        &self,
-        function: &'ast Function<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        let name = local_name(&function.name);
-        let fqn = qualified_name(context.namespace.as_deref(), &name);
-        context.push_node("function", Some(name), function.span());
-        context.context_stack.push(fqn);
-    }
-
-    fn walk_out_function(
-        &self,
-        _function: &'ast Function<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        context.context_stack.pop();
-    }
-
-    fn walk_in_method(
-        &self,
-        method: &'ast Method<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        let name = local_name(&method.name);
-        let fqn = context.current_context().map_or_else(
-            || name.clone(),
-            |declaring_type| member_name(&declaring_type, &name),
-        );
-        context.push_node("method", Some(name), method.span());
-        context.context_stack.push(fqn);
-    }
-
-    fn walk_out_method(
-        &self,
-        _method: &'ast Method<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        context.context_stack.pop();
-    }
-
-    fn walk_in_direct_variable(
-        &self,
-        variable: &'ast DirectVariable<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        let name = String::from_utf8_lossy(variable.name).into_owned();
-        context.push_reference("variable", name, variable.span());
-    }
-
-    fn walk_in_function_call(
-        &self,
-        call: &'ast FunctionCall<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        if let Some(name) = expression_identifier(call.function) {
-            context.push_reference("function", name.clone(), call.function.span());
-            context.push_node("function-call", Some(name), call.span());
-        }
-    }
-
-    fn walk_in_method_call(
-        &self,
-        call: &'ast MethodCall<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        if let Some(name) = member_selector_name(&call.method) {
-            context.push_reference("method", name.clone(), call.method.span());
-            context.push_node("method-call", Some(name), call.span());
-        }
-    }
-
-    fn walk_in_null_safe_method_call(
-        &self,
-        call: &'ast NullSafeMethodCall<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        if let Some(name) = member_selector_name(&call.method) {
-            context.push_reference("method", name.clone(), call.method.span());
-            context.push_node("null-safe-method-call", Some(name), call.span());
-        }
-    }
-
-    fn walk_in_static_method_call(
-        &self,
-        call: &'ast StaticMethodCall<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        if let Some(name) = member_selector_name(&call.method) {
-            context.push_reference("static-method", name.clone(), call.method.span());
-            context.push_node("static-method-call", Some(name), call.span());
-        }
-    }
-
-    fn walk_in_constant_access(
-        &self,
-        access: &'ast mago_syntax::ast::ConstantAccess<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        let name = identifier_name(&access.name);
-        context.push_reference("constant", name, access.span());
-    }
-
-    fn walk_in_property_access(
-        &self,
-        access: &'ast mago_syntax::ast::PropertyAccess<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        if let Some(name) = member_selector_name(&access.property) {
-            context.push_reference("property", name.clone(), access.property.span());
-            context.push_node("property-access", Some(name), access.span());
-        }
-    }
-
-    fn walk_in_null_safe_property_access(
-        &self,
-        access: &'ast mago_syntax::ast::NullSafePropertyAccess<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        if let Some(name) = member_selector_name(&access.property) {
-            context.push_reference("property", name.clone(), access.property.span());
-            context.push_node("null-safe-property-access", Some(name), access.span());
-        }
-    }
-
-    fn walk_in_class_constant_access(
-        &self,
-        access: &'ast mago_syntax::ast::ClassConstantAccess<'arena>,
-        context: &mut SearchProjectionContext<'source>,
-    ) {
-        if let Some(name) = class_constant_selector_name(&access.constant) {
-            context.push_reference("class-constant", name.clone(), access.constant.span());
-            context.push_node("class-constant-access", Some(name), access.span());
-        }
-    }
-}
-
-impl SearchProjectionContext<'_> {
-    fn current_context(&self) -> Option<String> {
-        self.context_stack.last().cloned()
-    }
-
-    fn push_node(&mut self, kind: &'static str, name: Option<String>, span: Span) {
-        if !self.source.map.contains_source_span(span) {
-            return;
-        }
-
-        self.nodes.push(CodeNodeRecord {
-            kind,
-            name,
-            span: self.source.map.span_record(span),
-            context: self.current_context(),
-            file: None,
-        });
-    }
-
-    fn push_reference(&mut self, kind: &'static str, name: String, span: Span) {
-        if !self.source.map.contains_source_span(span) {
-            return;
-        }
-
-        self.nodes.push(CodeNodeRecord {
-            kind,
-            name: Some(name.clone()),
-            span: self.source.map.span_record(span),
-            context: self.current_context(),
-            file: None,
-        });
-        self.references.push(ReferenceRecord {
-            kind,
-            name,
-            span: self.source.map.span_record(span),
-            context: self.current_context(),
-            file: None,
-        });
-    }
-}
-
-fn expression_identifier(expression: &Expression<'_>) -> Option<String> {
-    match expression.unparenthesized() {
-        Expression::Identifier(identifier) => Some(identifier_name(identifier)),
-        _ => None,
-    }
-}
-
-fn member_selector_name(selector: &ClassLikeMemberSelector<'_>) -> Option<String> {
-    match selector {
-        ClassLikeMemberSelector::Identifier(identifier) => Some(local_name(identifier)),
-        _ => None,
-    }
-}
-
-fn class_constant_selector_name(selector: &ClassLikeConstantSelector<'_>) -> Option<String> {
-    match selector {
-        ClassLikeConstantSelector::Identifier(identifier) => Some(local_name(identifier)),
-        _ => None,
-    }
-}
-
 impl DeclarationContext {
     fn for_type(&self, declaring_type: String) -> Self {
         Self {
@@ -1115,6 +806,10 @@ mod tests {
             class Demo {
                 public function run(): void {
                     $value = helper($this->name());
+                    $this->prop;
+                    $this?->maybe();
+                    self::make();
+                    self::VALUE;
                 }
             }"#,
             Some("demo.php"),
@@ -1139,6 +834,26 @@ mod tests {
                 .iter()
                 .any(|reference| reference["kind"] == "method" && reference["name"] == "name")
         );
+        assert!(payload["references"].as_array().unwrap().iter().any(
+            |reference| reference["kind"] == "method"
+                && reference["name"] == "name"
+                && reference["receiver"] == "$this"
+        ));
+        assert!(payload["references"].as_array().unwrap().iter().any(
+            |reference| reference["kind"] == "static-method"
+                && reference["name"] == "make"
+                && reference["receiver"] == "self"
+        ));
+        assert!(payload["references"].as_array().unwrap().iter().any(
+            |reference| reference["kind"] == "property"
+                && reference["name"] == "prop"
+                && reference["receiver"] == "$this"
+        ));
+        assert!(payload["references"].as_array().unwrap().iter().any(
+            |reference| reference["kind"] == "class-constant"
+                && reference["name"] == "VALUE"
+                && reference["receiver"] == "self"
+        ));
         assert!(
             payload["nodes"]
                 .as_array()
@@ -1152,6 +867,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|node| node["kind"] == "method-call" && node["name"] == "name")
+        );
+        assert!(
+            payload["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|node| node["kind"] != "variable" && node["kind"] != "property")
         );
     }
 
@@ -1220,7 +942,7 @@ mod tests {
         let root = project.root.to_string_lossy().into_owned();
         project.write_source(
             "src/Example.php",
-            "<?php namespace App; final class Example { public function run(): void { $value = helper(); } }",
+            "<?php namespace App; final class Example { public function run(object $other): void { $value = helper(); $this->name(); $other->name(); } }",
         );
 
         let nodes = serde_json::json!({
@@ -1246,6 +968,30 @@ mod tests {
         assert_eq!(payload["references"][0]["file"], "src/Example.php");
         assert_eq!(payload["references"][0]["context"], "App\\Example::run");
 
+        let method_reference = serde_json::json!({
+            "op": "query_references",
+            "root": project.root.to_string_lossy(),
+            "query": {"kind": "method", "name": "name", "receiver": "$this"}
+        });
+        let payload: Value =
+            serde_json::from_str(&dispatch_query_json(&method_reference.to_string()))
+                .expect("valid payload");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["references"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["references"][0]["receiver"], "$this");
+
+        let other_method_reference = serde_json::json!({
+            "op": "query_references",
+            "root": project.root.to_string_lossy(),
+            "query": {"kind": "method", "name": "name", "receiver": "$other"}
+        });
+        let payload: Value =
+            serde_json::from_str(&dispatch_query_json(&other_method_reference.to_string()))
+                .expect("valid payload");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["references"].as_array().unwrap().len(), 1);
+        assert_eq!(payload["references"][0]["receiver"], "$other");
+
         let all_nodes = serde_json::json!({
             "op": "query_nodes",
             "root": project.root.to_string_lossy(),
@@ -1254,7 +1000,13 @@ mod tests {
         let payload: Value = serde_json::from_str(&dispatch_query_json(&all_nodes.to_string()))
             .expect("valid payload");
         assert_eq!(payload["ok"], true);
-        assert!(payload["nodes"].as_array().unwrap().len() >= 4);
+        assert!(
+            payload["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|node| node["kind"] != "variable")
+        );
     }
 
     #[test]

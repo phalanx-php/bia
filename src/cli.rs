@@ -16,6 +16,7 @@ Slim vars: inline -r code auto-adds $ to 1-2 lowercase letter variables.
   OK:   a, z, vv, ab        (1-2 lowercase letters)
   Bad:  aaa, _a, A1         (too long, underscore, uppercase)
   Bad:  if, do, fn, or, as  (reserved keywords)
+
 For normal PHP variables, use a heredoc:
   dory -r "$(cat <<'PHP'
   $longName = fetchData();

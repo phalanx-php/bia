@@ -63,6 +63,12 @@ impl ReferenceQuery {
                 .name
                 .as_deref()
                 .is_none_or(|name| reference.name == name)
+            && self.receiver.as_deref().is_none_or(|receiver| {
+                reference
+                    .receiver
+                    .as_deref()
+                    .is_some_and(|reference_receiver| reference_receiver == receiver)
+            })
             && self.context.as_deref().is_none_or(|context| {
                 reference
                     .context

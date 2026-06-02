@@ -63,6 +63,7 @@ pub(crate) struct NodeQuery {
 pub(crate) struct ReferenceQuery {
     pub(crate) kind: Option<String>,
     pub(crate) name: Option<String>,
+    pub(crate) receiver: Option<String>,
     pub(crate) file: Option<String>,
     pub(crate) context: Option<String>,
 }
