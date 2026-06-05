@@ -156,7 +156,7 @@ foreach ($packages as [$namespace, $srcDir]) {
         $realPath = $file->getRealPath();
         $relativePath = substr($realPath, strlen($srcDir) + 1);
 
-        if (isset($eagerFileRealPaths[$realPath])) {
+        if (isset($eagerFileRealPaths[$realPath]) || isPackageTestPath($relativePath)) {
             continue;
         }
 
@@ -228,6 +228,11 @@ function generateAutoloader(array $classMap, array $eagerFiles): string
 
     {$eagerRequires}
     PHP;
+}
+
+function isPackageTestPath(string $relativePath): bool
+{
+    return str_starts_with($relativePath, 'tests' . DIRECTORY_SEPARATOR);
 }
 
 /**
