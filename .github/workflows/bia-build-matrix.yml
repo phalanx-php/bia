@@ -154,7 +154,7 @@ jobs:
       - name: Smoke embedded runtime
         shell: bash
         run: |
-          "${{ matrix.binary_path }}" -r 'foreach (["Phalanx\\Http\\FastRouteCompiler", "Phalanx\\Worker\\WorkerPool\\WorkerPool", "Phalanx\\DevServer\\ManagedProcess", "Phalanx\\WebSocket\\WsRouteConfig", "Phalanx\\Network\\Subnet", "GuzzleHttp\\Psr7\\ServerRequest", "Psr\\Http\\Message\\ResponseInterface", "FastRoute\\FastRoute", "IPLib\\Factory", "Symfony\\Component\\Runtime\\GenericRuntime", "Symfony\\Runtime\\Symfony\\Component\\Console\\ApplicationRuntime"] as $symbol) { if (!class_exists($symbol) && !interface_exists($symbol)) { throw new RuntimeException("missing " . $symbol); } }'
+          "${{ matrix.binary_path }}" -r 'foreach (["Phalanx\\Mark\\Mark", "Phalanx\\Http\\FastRouteCompiler", "Phalanx\\Worker\\WorkerPool\\WorkerPool", "Phalanx\\DevServer\\ManagedProcess", "Phalanx\\WebSocket\\WsRouteConfig", "Phalanx\\Network\\Subnet", "GuzzleHttp\\Psr7\\ServerRequest", "Psr\\Http\\Message\\ResponseInterface", "FastRoute\\FastRoute", "IPLib\\Factory", "Symfony\\Component\\Runtime\\GenericRuntime", "Symfony\\Runtime\\Symfony\\Component\\Console\\ApplicationRuntime"] as $symbol) { if (!class_exists($symbol) && !interface_exists($symbol)) { throw new RuntimeException("missing " . $symbol); } }'
           "${{ matrix.binary_path }}" -r 'if (!function_exists("FastRoute\\simpleDispatcher")) { throw new RuntimeException("missing FastRoute functions"); }'
           "${{ matrix.binary_path }}" -r 'dump((new Phalanx\Network\Subnet("127.0.0.0/30"))->contains("127.0.0.1"))'
 
