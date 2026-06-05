@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
   workflow_dispatch:
     inputs:
@@ -172,3 +174,17 @@ jobs:
         env:
           BIA_BIN: ${{ matrix.binary_path }}
         run: bash tests/scripts/gauntlet.sh
+
+      - name: Package Bia binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "${{ matrix.binary_path }}" "dist/bia-${{ matrix.name }}"
+          chmod +x "dist/bia-${{ matrix.name }}"
+
+      - name: Upload Bia binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bia-${{ matrix.name }}
+          path: dist/bia-${{ matrix.name }}
+          if-no-files-found: error

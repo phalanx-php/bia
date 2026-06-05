@@ -5,16 +5,12 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIA_ROOT="$(dirname "$DIR")"
 REMOTE_HOST="${BIA_REMOTE_BUILD_HOST:?Set BIA_REMOTE_BUILD_HOST to the SSH host for the Linux build machine.}"
 REMOTE_DIR="${BIA_REMOTE_BUILD_DIR:?Set BIA_REMOTE_BUILD_DIR to the remote Bia build directory.}"
-REMOTE_RIPHT_DIR="${BIA_REMOTE_RIPHT_DIR:?Set BIA_REMOTE_RIPHT_DIR to the remote ripht-php-sapi checkout directory.}"
 
 echo "=== 0. Building embedded runtime locally ==="
 # Ensure framework changes (Phalanx, bia-runtime) are bundled into the embedded tarball
 php "$BIA_ROOT/scripts/build-embed.php"
 
 echo "=== 1. Syncing local source to $REMOTE_HOST ==="
-# Sync the dependency crate that Cargo.toml references via a local path
-rsync -avz --exclude 'target' --exclude '.git' "$BIA_ROOT/../../../../Rust/ripht-php-sapi/" "$REMOTE_HOST:$REMOTE_RIPHT_DIR/"
-
 # We exclude build artifacts and cached directories so we don't overwrite the server's cache
 rsync -avz \
   --exclude 'target' \
@@ -31,9 +27,6 @@ ssh "$REMOTE_HOST" "
 
   # Ensure Cargo is in PATH
   source ~/.cargo/env
-
-  # PATCH: Update local path dependency to reflect remote server layout
-  sed -i 's|path = \"../../../../Rust/ripht-php-sapi\"|path = \"$REMOTE_RIPHT_DIR\"|g' Cargo.toml
 
   # Calculate a hash of the files that dictate the C/PHP compilation environment
   CURRENT_HASH=\$(md5sum craft.yml scripts/build-static-engine.sh | md5sum | awk '{print \$1}')

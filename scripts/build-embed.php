@@ -21,6 +21,7 @@ $monorepoVendor = $workspaceRoot . '/phalanx/vendor';
 
 $packages = [
     ['Phalanx\\', $monorepoSrc . '/Runtime'],
+    ['Phalanx\\Mark\\', $monorepoSrc . '/Mark'],
     ['Phalanx\\Console\\', $monorepoSrc . '/Console'],
     ['Phalanx\\Cli\\', $monorepoSrc . '/Cli'],
     ['Phalanx\\Config\\', $monorepoSrc . '/Config'],
