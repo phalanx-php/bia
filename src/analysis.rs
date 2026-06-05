@@ -30,7 +30,7 @@ use records::{
 };
 
 const INLINE_PREFIX: &str = "<?php\n";
-const DEFAULT_INLINE_NAME: &str = "dory://inline.php";
+const DEFAULT_INLINE_NAME: &str = "bia://inline.php";
 
 struct AnalysisSource {
     file: File,
@@ -738,7 +738,7 @@ mod tests {
                 .expect("system time after unix epoch")
                 .as_nanos();
             let root = std::env::temp_dir().join(format!(
-                "dory-analysis-{name}-{}-{unique}",
+                "bia-analysis-{name}-{}-{unique}",
                 std::process::id()
             ));
 

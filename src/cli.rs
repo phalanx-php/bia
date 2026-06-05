@@ -2,15 +2,15 @@ use clap::Parser;
 
 #[derive(Parser)]
 #[command(
-    name = "dory",
+    name = "bia",
     version,
     about = "Phalanx Scripting Environment",
     after_help = r#"Quick start:
-  dory -r 'dory()->dump("hello")'
-  dory -r 'dory()->dump(1 + 1)'
-  dory -r 'a = 3; dory()->dump(a * 3)'
-  dory run script.php
-  dory doctor
+  bia -r 'bia()->dump("hello")'
+  bia -r 'bia()->dump(1 + 1)'
+  bia -r 'a = 3; bia()->dump(a * 3)'
+  bia run script.php
+  bia doctor
 
 Slim vars: inline -r code auto-adds $ to 1-2 lowercase letter variables.
   OK:   a, z, vv, ab        (1-2 lowercase letters)
@@ -18,13 +18,13 @@ Slim vars: inline -r code auto-adds $ to 1-2 lowercase letter variables.
   Bad:  if, do, fn, or, as  (reserved keywords)
 
 For normal PHP variables, use a heredoc:
-  dory -r "<<'PHP'
+  bia -r "<<'PHP'
   $longName = fetchData();
-  dory()->dump($longName);
+  bia()->dump($longName);
   PHP"
 "#
 )]
-pub struct DoryCli {
+pub struct BiaCli {
     #[arg(short, long)]
     pub verbose: bool,
 

@@ -5,7 +5,7 @@ use ripht_php_sapi::native::{Call, Function, ReturnValue};
 
 use crate::analysis;
 
-unsafe extern "C" fn zif_dory_code_query_json(
+unsafe extern "C" fn zif_bia_code_query_json(
     execute_data: *mut c_void,
     return_value: *mut ReturnValue,
 ) {
@@ -15,7 +15,7 @@ unsafe extern "C" fn zif_dory_code_query_json(
         let argc = call.num_args();
 
         if argc == 0 {
-            return analysis::error_json("dory_code_query_json expects a JSON request");
+            return analysis::error_json("bia_code_query_json expects a JSON request");
         }
 
         let Some(request) = call.arg_string(1) else {
@@ -24,7 +24,7 @@ unsafe extern "C" fn zif_dory_code_query_json(
 
         analysis::CodeQueryEngine::shared().dispatch_json(&String::from_utf8_lossy(request))
     })
-    .unwrap_or_else(|_| analysis::error_json("Dory code parser panicked"));
+    .unwrap_or_else(|_| analysis::error_json("Bia code parser panicked"));
 
     // SAFETY: PHP supplied `return_value` for this active native call.
     unsafe { native::set_string(return_value, json.as_bytes()) };
@@ -89,8 +89,8 @@ macro_rules! func_entry {
 
 pub fn entries() -> &'static [Function] {
     static ENTRIES: [Function; 1] = [func_entry!(
-        c"dory_code_query_json",
-        zif_dory_code_query_json,
+        c"bia_code_query_json",
+        zif_bia_code_query_json,
         ARGINFO_CODE_QUERY_JSON
     )];
 

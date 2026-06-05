@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Generates embedded/dory-runtime.tar from Phalanx monorepo sources.
+ * Generates embedded/bia-runtime.tar from Phalanx monorepo sources.
  *
  * Run: php scripts/build-embed.php
  *
@@ -14,26 +14,26 @@ declare(strict_types=1);
 $toolDir = dirname(__DIR__);
 $workspaceRoot = dirname($toolDir, 2);
 $monorepoSrc = $workspaceRoot . '/phalanx/src';
-$doryRuntime = $workspaceRoot . '/libs/dory-runtime';
-$outputPath = $toolDir . '/embedded/dory-runtime.tar';
+$biaRuntime = $workspaceRoot . '/libs/bia-runtime';
+$outputPath = $toolDir . '/embedded/bia-runtime.tar';
 
 $monorepoVendor = $workspaceRoot . '/phalanx/vendor';
 
 $packages = [
-    ['Phalanx\\', $monorepoSrc . '/Aegis/src'],
-    ['Phalanx\\Archon\\', $monorepoSrc . '/Archon/src'],
-    ['Phalanx\\Cli\\', $monorepoSrc . '/Cli/src'],
-    ['Phalanx\\Themis\\', $monorepoSrc . '/Themis/src'],
-    ['Phalanx\\Styx\\', $monorepoSrc . '/Styx/src'],
-    ['Phalanx\\Iris\\', $monorepoSrc . '/Iris/src'],
-    ['Phalanx\\Grammata\\', $monorepoSrc . '/Grammata/src'],
-    ['Phalanx\\Enigma\\', $monorepoSrc . '/Enigma/src'],
-    ['Phalanx\\Stoa\\', $monorepoSrc . '/Stoa/src'],
-    ['Phalanx\\Hydra\\', $monorepoSrc . '/Hydra/src'],
-    ['Phalanx\\Skopos\\', $monorepoSrc . '/Skopos/src'],
-    ['Phalanx\\Hermes\\', $monorepoSrc . '/Hermes/src'],
-    ['Phalanx\\Argos\\', $monorepoSrc . '/Argos/src'],
-    ['Phalanx\\Dory\\', $doryRuntime . '/src'],
+    ['Phalanx\\', $monorepoSrc . '/Runtime'],
+    ['Phalanx\\Console\\', $monorepoSrc . '/Console'],
+    ['Phalanx\\Cli\\', $monorepoSrc . '/Cli'],
+    ['Phalanx\\Config\\', $monorepoSrc . '/Config'],
+    ['Phalanx\\Stream\\', $monorepoSrc . '/Stream'],
+    ['Phalanx\\HttpClient\\', $monorepoSrc . '/HttpClient'],
+    ['Phalanx\\Filesystem\\', $monorepoSrc . '/Filesystem'],
+    ['Phalanx\\AiProviders\\', $monorepoSrc . '/AiProviders'],
+    ['Phalanx\\Http\\', $monorepoSrc . '/Http'],
+    ['Phalanx\\Worker\\', $monorepoSrc . '/Worker'],
+    ['Phalanx\\DevServer\\', $monorepoSrc . '/DevServer'],
+    ['Phalanx\\WebSocket\\', $monorepoSrc . '/WebSocket'],
+    ['Phalanx\\Network\\', $monorepoSrc . '/Network'],
+    ['Phalanx\\Bia\\', $biaRuntime . '/src'],
     ['GuzzleHttp\\Psr7\\', $monorepoVendor . '/guzzlehttp/psr7/src'],
     ['Psr\\Http\\Client\\', $monorepoVendor . '/psr/http-client/src'],
     ['Psr\\Http\\Message\\', $monorepoVendor . '/psr/http-factory/src'],
@@ -70,7 +70,7 @@ $packages = [
 ];
 
 $eagerFiles = [
-    'functions.php' => $doryRuntime . '/src/functions.php',
+    'functions.php' => $biaRuntime . '/src/functions.php',
     'vendor/ralouphie/getallheaders/src/getallheaders.php' => $monorepoVendor . '/ralouphie/getallheaders/src/getallheaders.php',
     'vendor/nikic/fast-route/src/functions.php' => $monorepoVendor . '/nikic/fast-route/src/functions.php',
     'vendor/symfony/deprecation-contracts/function.php' => $monorepoVendor . '/symfony/deprecation-contracts/function.php',

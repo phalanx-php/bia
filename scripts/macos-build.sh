@@ -2,12 +2,12 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DORY_ROOT="$(dirname "$DIR")"
+BIA_ROOT="$(dirname "$DIR")"
 
 echo "=== 0. Building embedded runtime locally ==="
-php "$DORY_ROOT/scripts/build-embed.php"
+php "$BIA_ROOT/scripts/build-embed.php"
 
-cd "$DORY_ROOT"
+cd "$BIA_ROOT"
 
 # Determine MD5 command for macOS vs Linux
 if command -v md5 >/dev/null 2>&1; then
@@ -57,4 +57,4 @@ echo "=> Running cargo build..."
 cargo build
 
 echo "=== Success ==="
-echo "Local binary available at: $DORY_ROOT/target/debug/dory"
+echo "Local binary available at: $BIA_ROOT/target/debug/bia"

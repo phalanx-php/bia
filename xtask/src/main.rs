@@ -92,7 +92,7 @@ fn run_build(root: &PathBuf, release: bool) -> ExitCode {
     }
 
     eprintln!(
-        ":: Building dory binary{}...",
+        ":: Building bia binary{}...",
         if release { " (release)" } else { "" }
     );
 
@@ -100,7 +100,7 @@ fn run_build(root: &PathBuf, release: bool) -> ExitCode {
 
     cmd.arg("build")
         .arg("--package")
-        .arg("dory")
+        .arg("bia")
         .current_dir(root);
 
     if release {
@@ -128,7 +128,7 @@ fn run_test(root: &PathBuf) -> ExitCode {
     eprintln!(":: Running integration tests...");
 
     let status = Command::new("cargo")
-        .args(["test", "--package", "dory", "--", "--ignored"])
+        .args(["test", "--package", "bia", "--", "--ignored"])
         .current_dir(root)
         .status();
 
@@ -150,10 +150,10 @@ fn run_check(root: &PathBuf) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    eprintln!(":: Checking dory...");
+    eprintln!(":: Checking bia...");
 
     let status = Command::new("cargo")
-        .args(["check", "--package", "dory"])
+        .args(["check", "--package", "bia"])
         .current_dir(root)
         .status();
 

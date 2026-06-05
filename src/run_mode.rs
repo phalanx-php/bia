@@ -2,7 +2,7 @@ use std::io::{IsTerminal, Read};
 use std::path::Path;
 
 use crate::cli;
-use crate::error::DoryError;
+use crate::error::BiaError;
 
 pub enum RunMode {
     Inline(String),
@@ -11,7 +11,7 @@ pub enum RunMode {
     Passthrough,
 }
 
-pub fn resolve(cli: &cli::DoryCli) -> Result<RunMode, DoryError> {
+pub fn resolve(cli: &cli::BiaCli) -> Result<RunMode, BiaError> {
     if let Some(arg) = &cli.code {
         return Ok(resolve_code_arg(arg));
     }
@@ -20,7 +20,7 @@ pub fn resolve(cli: &cli::DoryCli) -> Result<RunMode, DoryError> {
         let mut buf = String::new();
         std::io::stdin()
             .read_to_string(&mut buf)
-            .map_err(|error| DoryError::from_error("failed to read stdin", error))?;
+            .map_err(|error| BiaError::from_error("failed to read stdin", error))?;
 
         let trimmed = buf.trim();
         if !trimmed.is_empty() {

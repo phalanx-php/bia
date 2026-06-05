@@ -4,17 +4,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use ripht_php_sapi::{ExecutionHooks, ExecutionMessage, OutputAction};
 
-pub struct DoryHooks {
+pub struct BiaHooks {
     shutdown: Arc<AtomicBool>,
 }
 
-impl DoryHooks {
+impl BiaHooks {
     pub fn new(shutdown: Arc<AtomicBool>) -> Self {
         Self { shutdown }
     }
 }
 
-impl ExecutionHooks for DoryHooks {
+impl ExecutionHooks for BiaHooks {
     fn on_output(&mut self, data: &[u8]) -> OutputAction {
         use std::io::Write;
         let _ = std::io::stdout().write_all(data);

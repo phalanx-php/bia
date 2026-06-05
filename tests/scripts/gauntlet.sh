@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DORY="${DORY_BIN:-./target/debug/dory}"
+BIA="${BIA_BIN:-./target/debug/bia}"
 PASS=0
 FAIL=0
 WORKDIR="$(mktemp -d)"
@@ -59,13 +59,13 @@ assert_exit() {
 
 # --- CLI ---
 
-assert_contains "version" "dory" "$($DORY --version 2>&1)"
+assert_contains "version" "bia" "$($BIA --version 2>&1)"
 
-out=$(echo "x" | $DORY --help 2>&1)
+out=$(echo "x" | $BIA --help 2>&1)
 assert_contains "help shows run" "run" "$out"
 assert_contains "help shows doctor" "doctor" "$out"
 
-out=$($DORY doctor 2>/dev/null)
+out=$($BIA doctor 2>/dev/null)
 assert_contains "doctor PHP pass" "[pass] PHP >= 8.4" "$out"
 assert_contains "doctor Swoole pass" "[pass] Swoole loaded" "$out"
 assert_contains "doctor extensions loaded" "loaded" "$out"
@@ -73,27 +73,27 @@ assert_contains "doctor ripht" "cli (ripht)" "$out"
 
 # --- Inline eval ---
 
-assert_eq "expr 1+1" "2" "$(echo x | $DORY -r '1 + 1' 2>/dev/null)"
-assert_eq "expr strtoupper" '"PHALANX"' "$(echo x | $DORY -r 'strtoupper("phalanx")' 2>/dev/null)"
+assert_eq "expr 1+1" "2" "$(echo x | $BIA -r '1 + 1' 2>/dev/null)"
+assert_eq "expr strtoupper" '"PHALANX"' "$(echo x | $BIA -r 'strtoupper("phalanx")' 2>/dev/null)"
 
 # --- Bare variables ---
 
-assert_eq "bare var assign+use" "84" "$(echo x | $DORY -r 'x = 42; dump(x * 2)' 2>/dev/null)"
-assert_eq "bare var 'is' expands" "42" "$(echo x | $DORY -r 'is = 42; dump(is)' 2>/dev/null)"
+assert_eq "bare var assign+use" "84" "$(echo x | $BIA -r 'x = 42; dump(x * 2)' 2>/dev/null)"
+assert_eq "bare var 'is' expands" "42" "$(echo x | $BIA -r 'is = 42; dump(is)' 2>/dev/null)"
 
-out=$(echo x | $DORY -r 'dump(array_map(fn(n) => n * 2, [1,2,3]))' 2>/dev/null)
+out=$(echo x | $BIA -r 'dump(array_map(fn(n) => n * 2, [1,2,3]))' 2>/dev/null)
 assert_contains "fn keyword preserved" "4" "$out"
 
 # --- Pipe ---
 
-assert_eq "pipe stdin" "2" "$(echo '1 + 1' | $DORY 2>/dev/null)"
+assert_eq "pipe stdin" "2" "$(echo '1 + 1' | $BIA 2>/dev/null)"
 
 # --- dd ---
 
-code=0; echo x | $DORY -r 'dd("halt")' 2>/dev/null || code=$?
+code=0; echo x | $BIA -r 'dd("halt")' 2>/dev/null || code=$?
 assert_exit "dd exits 0" "0" "$code"
 
-out=$(echo x | $DORY -r 'dd("stop"); dump("never")' 2>/dev/null || true)
+out=$(echo x | $BIA -r 'dd("stop"); dump("never")' 2>/dev/null || true)
 assert_contains "dd stops execution" "stop" "$out"
 
 if [[ "$out" == *"never"* ]]; then
@@ -105,63 +105,63 @@ fi
 
 # --- dump ---
 
-out=$(echo x | $DORY -r 'dump(["a" => 1, "b" => [2, 3]])' 2>/dev/null)
+out=$(echo x | $BIA -r 'dump(["a" => 1, "b" => [2, 3]])' 2>/dev/null)
 assert_contains "dump nested array" '"a" => 1' "$out"
 assert_contains "dump nested sub" "0 => 2" "$out"
 
 # --- File detection ---
 
-assert_eq "run fixture" "42" "$(echo x | $DORY -r tests/fixtures/return-value.php 2>/dev/null | tr -d '[:space:]')"
+assert_eq "run fixture" "42" "$(echo x | $BIA -r tests/fixtures/return-value.php 2>/dev/null | tr -d '[:space:]')"
 
-code=0; echo x | $DORY -r missing.php 2>&1 || code=$?
+code=0; echo x | $BIA -r missing.php 2>&1 || code=$?
 assert_exit "missing file exits 1" "1" "$code"
 
 # --- Code parser ---
 
-assert_eq "code query native" "true" "$(echo x | $DORY -r 'dump(function_exists("dory_code_query_json"))' 2>/dev/null)"
-assert_eq "code parser declaration" '"Demo"' "$(echo x | $DORY -r 'dump(dory()->code->parse("final class Demo {}", "demo.php")->declarations[0]->name)' 2>/dev/null)"
+assert_eq "code query native" "true" "$(echo x | $BIA -r 'dump(function_exists("bia_code_query_json"))' 2>/dev/null)"
+assert_eq "code parser declaration" '"Demo"' "$(echo x | $BIA -r 'dump(bia()->code->parse("final class Demo {}", "demo.php")->declarations[0]->name)' 2>/dev/null)"
 
 mkdir -p "$WORKDIR/code/src" "$WORKDIR/code/vendor"
 printf '%s' '<?php namespace App; final class Example { public function run(): void {} }' > "$WORKDIR/code/src/Example.php"
 printf '%s' '<?php class Ignored {}' > "$WORKDIR/code/vendor/Ignored.php"
 
-out=$(DORY_GAUNTLET_CODE_ROOT="$WORKDIR/code" $DORY <<'PHP' 2>/dev/null
-$root = getenv("DORY_GAUNTLET_CODE_ROOT");
-dump(dory()->code->indexProject($root)->fileCount);
-dump(dory()->code->declarations($root, new \Phalanx\Dory\Code\DeclarationQuery(kind: "class"))->declarations[0]->file);
-dump(dory()->code->tokens($root, new \Phalanx\Dory\Code\TokenQuery(text: "class"))->tokens[0]->text);
+out=$(BIA_GAUNTLET_CODE_ROOT="$WORKDIR/code" $BIA <<'PHP' 2>/dev/null
+$root = getenv("BIA_GAUNTLET_CODE_ROOT");
+dump(bia()->code->indexProject($root)->fileCount);
+dump(bia()->code->declarations($root, new \Phalanx\Bia\Code\DeclarationQuery(kind: "class"))->declarations[0]->file);
+dump(bia()->code->tokens($root, new \Phalanx\Bia\Code\TokenQuery(text: "class"))->tokens[0]->text);
 PHP
 )
 assert_contains "code project index excludes vendor" "1" "$out"
 assert_contains "code declaration query file" '"src/Example.php"' "$out"
 assert_contains "code token query text" '"class"' "$out"
 
-out=$($DORY code check "$WORKDIR/code" 2>/dev/null)
+out=$($BIA code check "$WORKDIR/code" 2>/dev/null)
 assert_contains "code check command files" "Files: 1" "$out"
 assert_contains "code check command pass" "[pass] no parse errors" "$out"
 
-out=$($DORY code declarations "$WORKDIR/code" --kind=class --name=Example 2>/dev/null)
+out=$($BIA code declarations "$WORKDIR/code" --kind=class --name=Example 2>/dev/null)
 assert_contains "code declarations command" "class App\\Example src/Example.php:1" "$out"
 
-out=$($DORY code tokens "$WORKDIR/code" --text=class --file=src/Example.php --json 2>/dev/null)
+out=$($BIA code tokens "$WORKDIR/code" --text=class --file=src/Example.php --json 2>/dev/null)
 assert_contains "code tokens command json kind" '"kind": "Class"' "$out"
 assert_contains "code tokens command json text" '"text": "class"' "$out"
 
-code=0; $DORY code check "$WORKDIR/missing-code-root" >/dev/null 2>&1 || code=$?
+code=0; $BIA code check "$WORKDIR/missing-code-root" >/dev/null 2>&1 || code=$?
 assert_exit "code check missing root exits 1" "1" "$code"
 
-code=0; $DORY code tokens "$WORKDIR/code" --json >/dev/null 2>&1 || code=$?
+code=0; $BIA code tokens "$WORKDIR/code" --json >/dev/null 2>&1 || code=$?
 assert_exit "code tokens unfiltered exits 1" "1" "$code"
 
 mkdir -p "$WORKDIR/bad-code"
 printf '%s' '<?php class {' > "$WORKDIR/bad-code/Broken.php"
-code=0; out=$($DORY code check "$WORKDIR/bad-code" 2>/dev/null) || code=$?
+code=0; out=$($BIA code check "$WORKDIR/bad-code" 2>/dev/null) || code=$?
 assert_exit "code check parse errors exits 1" "1" "$code"
 assert_contains "code check parse errors reports fail" "[fail] parse errors" "$out"
 
 # --- HTTP adapter ---
 
-printf 'dory-local\n' > "$WORKDIR/zen"
+printf 'bia-local\n' > "$WORKDIR/zen"
 python3 - "$WORKDIR" "$WORKDIR/http-port" > "$WORKDIR/http.log" 2>&1 <<'PY' &
 import functools
 import http.server
@@ -193,8 +193,8 @@ if [[ ! -s "$WORKDIR/http-port" ]]; then
 else
     HTTP_PORT="$(cat "$WORKDIR/http-port")"
 
-out=$(DORY_GAUNTLET_HTTP_URL="http://127.0.0.1:${HTTP_PORT}/zen" $DORY <<'PHP' 2>/dev/null
-$r = dory()->http->get(getenv("DORY_GAUNTLET_HTTP_URL"));
+out=$(BIA_GAUNTLET_HTTP_URL="http://127.0.0.1:${HTTP_PORT}/zen" $BIA <<'PHP' 2>/dev/null
+$r = bia()->http->get(getenv("BIA_GAUNTLET_HTTP_URL"));
 dump($r->status);
 PHP
 )
@@ -203,21 +203,21 @@ fi
 
 # --- FS adapter ---
 
-DORY_GAUNTLET_FS_PATH="$WORKDIR/dory-gauntlet-assert.txt" $DORY <<'PHP' 2>/dev/null
-dory()->fs->write(getenv("DORY_GAUNTLET_FS_PATH"), "assertion");
+BIA_GAUNTLET_FS_PATH="$WORKDIR/bia-gauntlet-assert.txt" $BIA <<'PHP' 2>/dev/null
+bia()->fs->write(getenv("BIA_GAUNTLET_FS_PATH"), "assertion");
 PHP
 
-out=$(DORY_GAUNTLET_FS_PATH="$WORKDIR/dory-gauntlet-assert.txt" $DORY <<'PHP' 2>/dev/null
-dump(dory()->fs->read(getenv("DORY_GAUNTLET_FS_PATH")));
+out=$(BIA_GAUNTLET_FS_PATH="$WORKDIR/bia-gauntlet-assert.txt" $BIA <<'PHP' 2>/dev/null
+dump(bia()->fs->read(getenv("BIA_GAUNTLET_FS_PATH")));
 PHP
 )
 assert_eq "fs read" '"assertion"' "$out"
 
 # --- Concurrent ---
 
-out=$($DORY <<'PHP' 2>/dev/null
+out=$($BIA <<'PHP' 2>/dev/null
 $start = microtime(true);
-dory()->concurrent(
+bia()->concurrent(
     fn($s) => $s->delay(0.1),
     fn($s) => $s->delay(0.1),
     fn($s) => $s->delay(0.1),
@@ -236,8 +236,8 @@ fi
 
 # --- Settle ---
 
-out=$($DORY <<'PHP' 2>/dev/null
-dump(dory()->settle(
+out=$($BIA <<'PHP' 2>/dev/null
+dump(bia()->settle(
     fn($_s) => 42,
     fn($_s) => throw new RuntimeException("boom"),
     fn($_s) => "ok",
@@ -248,8 +248,8 @@ assert_contains "settle summary" "2/3 succeeded" "$out"
 
 # --- Race ---
 
-out=$($DORY <<'PHP' 2>/dev/null
-dump(dory()->race(
+out=$($BIA <<'PHP' 2>/dev/null
+dump(bia()->race(
     fn($p) => (function() use ($p) { $p->delay(0.2); return "slow"; })(),
     fn($p) => (function() use ($p) { $p->delay(0.01); return "fast"; })(),
 ));
@@ -259,10 +259,10 @@ assert_eq "race fast wins" '"fast"' "$out"
 
 # --- Extensions ---
 
-assert_contains "yaml" "dory" "$(echo x | $DORY -r 'dump(yaml_parse("name: dory"))' 2>/dev/null)"
-assert_contains "sodium" "5bb181" "$(echo x | $DORY -r 'dump(bin2hex(sodium_crypto_generichash("phalanx")))' 2>/dev/null)"
+assert_contains "yaml" "bia" "$(echo x | $BIA -r 'dump(yaml_parse("name: bia"))' 2>/dev/null)"
+assert_contains "sodium" "5bb181" "$(echo x | $BIA -r 'dump(bin2hex(sodium_crypto_generichash("phalanx")))' 2>/dev/null)"
 
-out=$($DORY <<'PHP' 2>/dev/null
+out=$($BIA <<'PHP' 2>/dev/null
 $db = new SQLite3(":memory:");
 $db->exec("CREATE TABLE t (v TEXT)");
 $db->exec("INSERT INTO t VALUES ('ok')");

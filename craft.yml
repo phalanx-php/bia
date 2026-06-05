@@ -37,8 +37,8 @@ sapi:
   - embed
 
 build-options:
-  with-config-file-path: /etc/dory/php
-  with-config-file-scan-dir: /etc/dory/php/conf.d
+  with-config-file-path: /etc/bia/php
+  with-config-file-scan-dir: /etc/bia/php/conf.d
   disable-opcache-jit: true
 
 download-options:

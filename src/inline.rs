@@ -3,7 +3,7 @@ pub fn wrap_inline_code(code: &str) -> String {
     let is_expression = !code.contains(';') && !code.contains('{') && !contains_assignment(&code);
 
     let body = if is_expression {
-        format!("$__r = ({code});\nif ($__r !== null) {{ dory()->dump($__r); }}\nreturn 0;")
+        format!("$__r = ({code});\nif ($__r !== null) {{ bia()->dump($__r); }}\nreturn 0;")
     } else {
         let stmts = if code.ends_with(';') || code.ends_with('}') || code.ends_with("?>") {
             code.clone()
@@ -182,7 +182,7 @@ mod tests {
         let wrapped = wrap_inline_code("1 + 1");
 
         assert!(wrapped.contains("$__r = (1 + 1);"));
-        assert!(wrapped.contains("dory()->dump($__r);"));
+        assert!(wrapped.contains("bia()->dump($__r);"));
     }
 
     #[test]

@@ -2,7 +2,7 @@ use std::io::{Cursor, Write};
 use std::path::PathBuf;
 use tempfile::{NamedTempFile, TempDir};
 
-const TAR_BYTES: &[u8] = include_bytes!("../embedded/dory-runtime.tar");
+const TAR_BYTES: &[u8] = include_bytes!("../embedded/bia-runtime.tar");
 const BOOTSTRAP_BYTES: &[u8] = include_bytes!("../embedded/bootstrap.php");
 
 pub struct EmbeddedRuntime {

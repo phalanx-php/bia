@@ -1,5 +1,5 @@
 <?php
 
-dory()->dump(42);
+bia()->dump(42);
 
 return 0;

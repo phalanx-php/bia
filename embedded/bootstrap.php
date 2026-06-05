@@ -13,7 +13,7 @@ if ($pwd !== false && is_dir($pwd)) {
     chdir($pwd);
 }
 
-$runtimeDir = getenv('DORY_RUNTIME_DIR');
+$runtimeDir = getenv('BIA_RUNTIME_DIR');
 
 if ($runtimeDir === false || !is_dir($runtimeDir)) {
     fwrite(STDERR, "Fatal: embedded runtime directory not found.\n");
@@ -22,13 +22,13 @@ if ($runtimeDir === false || !is_dir($runtimeDir)) {
 
 require $runtimeDir . '/vendor/autoload.php';
 
-// Rust passes args as JSON via DORY_ARGV because the embed SAPI doesn't
+// Rust passes args as JSON via BIA_ARGV because the embed SAPI doesn't
 // populate $argv or $_SERVER['argv'] as an array the way CLI SAPI does.
-$doryArgv = getenv('DORY_ARGV');
-$argv = $doryArgv !== false ? json_decode($doryArgv, true) : [];
+$biaArgv = getenv('BIA_ARGV');
+$argv = $biaArgv !== false ? json_decode($biaArgv, true) : [];
 
-// Archon expects argv[0] to be the script name (it strips it via array_slice).
-array_unshift($argv, 'dory');
+// Console expects argv[0] to be the script name (it strips it via array_slice).
+array_unshift($argv, 'bia');
 
 $env = array_filter(
     $_ENV + $_SERVER,
@@ -36,7 +36,7 @@ $env = array_filter(
     ARRAY_FILTER_USE_KEY,
 );
 
-foreach (['DORY_SCRIPT_TIMEOUT', 'DORY_MAX_CONCURRENCY', 'DORY_VERBOSE', 'DORY_EMBEDDED'] as $key) {
+foreach (['BIA_SCRIPT_TIMEOUT', 'BIA_MAX_CONCURRENCY', 'BIA_VERBOSE', 'BIA_EMBEDDED'] as $key) {
     $value = getenv($key);
 
     if ($value !== false) {
@@ -44,7 +44,7 @@ foreach (['DORY_SCRIPT_TIMEOUT', 'DORY_MAX_CONCURRENCY', 'DORY_VERBOSE', 'DORY_E
     }
 }
 
-$projectConfig = \Phalanx\Dory\Runtime\DoryProjectConfig::discover(getcwd() ?: '.');
+$projectConfig = \Phalanx\Bia\Runtime\BiaProjectConfig::discover(getcwd() ?: '.');
 
 $context = [
     ...$projectConfig->contextOverlay(),
@@ -52,26 +52,26 @@ $context = [
     'argv' => $argv,
 ];
 
-$exitCode = \Phalanx\Archon\Application\Archon::starting($context)
+$exitCode = \Phalanx\Console\Application\Console::starting($context)
     ->providers(
-        new \Phalanx\Dory\Runtime\DoryServiceBundle(),
-        new \Phalanx\Iris\HttpServiceBundle(),
-        new \Phalanx\Grammata\FilesystemServiceBundle(),
-        new \Phalanx\Argos\NetworkServiceBundle(),
-        new \Phalanx\Hermes\WsServiceBundle(),
+        new \Phalanx\Bia\Runtime\BiaServiceBundle(),
+        new \Phalanx\HttpClient\HttpServiceBundle(),
+        new \Phalanx\Filesystem\FilesystemServiceBundle(),
+        new \Phalanx\Network\NetworkServiceBundle(),
+        new \Phalanx\WebSocket\WsServiceBundle(),
     )
-    ->commands(\Phalanx\Dory\Command\DoryCommandGroup::commands())
-    ->withErrorRenderers(new \Phalanx\Dory\Console\ScriptFaultRenderer())
-    ->withConsoleConfig(new \Phalanx\Archon\Application\ConsoleConfig(
+    ->commands(\Phalanx\Bia\Command\BiaCommandGroup::commands())
+    ->withErrorRenderers(new \Phalanx\Bia\Console\ScriptFaultRenderer())
+    ->withConsoleConfig(new \Phalanx\Console\Application\ConsoleConfig(
         argv: array_slice($argv, 1),
         defaultCommand: 'help',
-        scriptName: 'dory',
+        scriptName: 'bia',
     ))
     ->run();
 
 // The embed SAPI doesn't propagate exit() codes to the host. Write it to
 // a file that the Rust host reads after execution completes.
-$exitFile = getenv('DORY_EXIT_FILE');
+$exitFile = getenv('BIA_EXIT_FILE');
 if ($exitFile !== false) {
     file_put_contents($exitFile, (string) $exitCode);
 }

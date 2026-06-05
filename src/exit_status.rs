@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use crate::error::DoryError;
+use crate::error::BiaError;
 
-pub fn read_exit_code(path: &Path) -> Result<u8, DoryError> {
+pub fn read_exit_code(path: &Path) -> Result<u8, BiaError> {
     let raw = std::fs::read_to_string(path).map_err(|error| {
-        DoryError::from_error(
-            format!("failed to read DORY_EXIT_FILE {}", path.display()),
+        BiaError::from_error(
+            format!("failed to read BIA_EXIT_FILE {}", path.display()),
             error,
         )
     })?;
@@ -13,16 +13,16 @@ pub fn read_exit_code(path: &Path) -> Result<u8, DoryError> {
     let trimmed = raw.trim();
 
     if trimmed.is_empty() {
-        return Err(DoryError::new(format!(
-            "DORY_EXIT_FILE {} was empty",
+        return Err(BiaError::new(format!(
+            "BIA_EXIT_FILE {} was empty",
             path.display()
         )));
     }
 
     let parsed = trimmed.parse::<u16>().map_err(|error| {
-        DoryError::from_error(
+        BiaError::from_error(
             format!(
-                "DORY_EXIT_FILE {} contained an invalid exit code",
+                "BIA_EXIT_FILE {} contained an invalid exit code",
                 path.display()
             ),
             error,
@@ -30,8 +30,8 @@ pub fn read_exit_code(path: &Path) -> Result<u8, DoryError> {
     })?;
 
     if parsed > u8::MAX as u16 {
-        return Err(DoryError::new(format!(
-            "DORY_EXIT_FILE {} contained an out-of-range exit code: {parsed}",
+        return Err(BiaError::new(format!(
+            "BIA_EXIT_FILE {} contained an out-of-range exit code: {parsed}",
             path.display()
         )));
     }
@@ -57,10 +57,10 @@ mod tests {
 
     #[test]
     fn missing_exit_file_fails_closed() {
-        let path = std::env::temp_dir().join("dory-missing-exit-code-for-test");
+        let path = std::env::temp_dir().join("bia-missing-exit-code-for-test");
         let error = read_exit_code(&path).expect_err("missing file must fail");
 
-        assert!(error.to_string().contains("failed to read DORY_EXIT_FILE"));
+        assert!(error.to_string().contains("failed to read BIA_EXIT_FILE"));
     }
 
     #[test]

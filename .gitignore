@@ -6,7 +6,7 @@
 !.cargo/config.toml
 !.github/
 !.github/workflows/
-!.github/workflows/dory-build-matrix.yml
+!.github/workflows/bia-build-matrix.yml
 !README.md
 
 target/
@@ -15,4 +15,4 @@ vendor/
 
 # Static PHP build artifacts (118MB+)
 .ripht/
-dory-linux-x86_64
+bia-linux-x86_64

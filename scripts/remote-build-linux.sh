@@ -2,18 +2,18 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DORY_ROOT="$(dirname "$DIR")"
-REMOTE_HOST="${DORY_REMOTE_BUILD_HOST:?Set DORY_REMOTE_BUILD_HOST to the SSH host for the Linux build machine.}"
-REMOTE_DIR="${DORY_REMOTE_BUILD_DIR:?Set DORY_REMOTE_BUILD_DIR to the remote Dory build directory.}"
-REMOTE_RIPHT_DIR="${DORY_REMOTE_RIPHT_DIR:?Set DORY_REMOTE_RIPHT_DIR to the remote ripht-php-sapi checkout directory.}"
+BIA_ROOT="$(dirname "$DIR")"
+REMOTE_HOST="${BIA_REMOTE_BUILD_HOST:?Set BIA_REMOTE_BUILD_HOST to the SSH host for the Linux build machine.}"
+REMOTE_DIR="${BIA_REMOTE_BUILD_DIR:?Set BIA_REMOTE_BUILD_DIR to the remote Bia build directory.}"
+REMOTE_RIPHT_DIR="${BIA_REMOTE_RIPHT_DIR:?Set BIA_REMOTE_RIPHT_DIR to the remote ripht-php-sapi checkout directory.}"
 
 echo "=== 0. Building embedded runtime locally ==="
-# Ensure framework changes (Phalanx, dory-runtime) are bundled into the embedded tarball
-php "$DORY_ROOT/scripts/build-embed.php"
+# Ensure framework changes (Phalanx, bia-runtime) are bundled into the embedded tarball
+php "$BIA_ROOT/scripts/build-embed.php"
 
 echo "=== 1. Syncing local source to $REMOTE_HOST ==="
 # Sync the dependency crate that Cargo.toml references via a local path
-rsync -avz --exclude 'target' --exclude '.git' "$DORY_ROOT/../../../../Rust/ripht-php-sapi/" "$REMOTE_HOST:$REMOTE_RIPHT_DIR/"
+rsync -avz --exclude 'target' --exclude '.git' "$BIA_ROOT/../../../../Rust/ripht-php-sapi/" "$REMOTE_HOST:$REMOTE_RIPHT_DIR/"
 
 # We exclude build artifacts and cached directories so we don't overwrite the server's cache
 rsync -avz \
@@ -22,7 +22,7 @@ rsync -avz \
   --exclude '.spc' \
   --exclude '.spc-work' \
   --exclude '.git' \
-  "$DORY_ROOT/" "$REMOTE_HOST:$REMOTE_DIR/"
+  "$BIA_ROOT/" "$REMOTE_HOST:$REMOTE_DIR/"
 
 echo "=== 2. Running remote build ==="
 ssh "$REMOTE_HOST" "
@@ -58,7 +58,7 @@ ssh "$REMOTE_HOST" "
 "
 
 echo "=== 3. Pulling compiled binary back to local ==="
-rsync -avz "$REMOTE_HOST:$REMOTE_DIR/target/release/dory" "$DORY_ROOT/dory-linux-x86_64"
+rsync -avz "$REMOTE_HOST:$REMOTE_DIR/target/release/bia" "$BIA_ROOT/bia-linux-x86_64"
 
 echo "=== Success ==="
-echo "Linux binary available at: $DORY_ROOT/dory-linux-x86_64"
+echo "Linux binary available at: $BIA_ROOT/bia-linux-x86_64"

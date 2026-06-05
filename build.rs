@@ -5,14 +5,14 @@ use std::path::{Path, PathBuf};
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=embedded/bootstrap.php");
-    println!("cargo:rerun-if-changed=embedded/dory-runtime.tar");
-    println!("cargo:rerun-if-env-changed=DORY_STATIC_PHP_PREFIX");
+    println!("cargo:rerun-if-changed=embedded/bia-runtime.tar");
+    println!("cargo:rerun-if-env-changed=BIA_STATIC_PHP_PREFIX");
 
-    let prefix = env::var_os("DORY_STATIC_PHP_PREFIX")
+    let prefix = env::var_os("BIA_STATIC_PHP_PREFIX")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").expect(
-                "CARGO_MANIFEST_DIR not set. Set DORY_STATIC_PHP_PREFIX to your PHP build root.",
+                "CARGO_MANIFEST_DIR not set. Set BIA_STATIC_PHP_PREFIX to your PHP build root.",
             );
 
             PathBuf::from(manifest_dir).join(".ripht/php")
@@ -20,7 +20,7 @@ fn main() {
 
     let lib_dir = prefix.join("lib");
 
-    let link_flags = lib_dir.join("dory-link-flags.txt");
+    let link_flags = lib_dir.join("bia-link-flags.txt");
 
     println!("cargo:rerun-if-changed={}", prefix.display());
     println!("cargo:rerun-if-changed={}", lib_dir.display());
@@ -28,7 +28,7 @@ fn main() {
 
     if !lib_dir.is_dir() {
         println!(
-            "cargo:warning=Dory static PHP libraries not found at {}; run scripts/build-static-engine.sh or set DORY_STATIC_PHP_PREFIX",
+            "cargo:warning=Bia static PHP libraries not found at {}; run scripts/build-static-engine.sh or set BIA_STATIC_PHP_PREFIX",
             prefix.display()
         );
 
@@ -42,7 +42,7 @@ fn main() {
     }
 
     println!(
-        "cargo:warning=Dory linker manifest not found at {}; falling back to archive scan",
+        "cargo:warning=Bia linker manifest not found at {}; falling back to archive scan",
         link_flags.display()
     );
 
@@ -51,7 +51,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=php");
 
     let mut libs = fs::read_dir(&lib_dir)
-        .expect("failed to read Dory static PHP lib directory")
+        .expect("failed to read Bia static PHP lib directory")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .collect::<Vec<_>>();
 
@@ -80,7 +80,7 @@ fn main() {
 }
 
 fn emit_link_flags(path: &Path) {
-    let manifest = fs::read_to_string(path).expect("failed to read Dory linker manifest");
+    let manifest = fs::read_to_string(path).expect("failed to read Bia linker manifest");
 
     for line in manifest.lines() {
         let Some((_, value)) = line.split_once('=') else {

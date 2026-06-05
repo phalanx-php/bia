@@ -1,4 +1,4 @@
-name: Dory build matrix
+name: Bia build matrix
 
 on:
   push:
@@ -52,24 +52,24 @@ jobs:
 
           case "$target" in
             linux-x86_64)
-              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/dory"}]}'
+              targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/bia"}]}'
               ;;
             linux-aarch64)
-              targets='{"include":[{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"","binary_path":"target/release/dory"}]}'
+              targets='{"include":[{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"","binary_path":"target/release/bia"}]}'
               ;;
             macos-x86_64)
-              targets='{"include":[{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/dory"}]}'
+              targets='{"include":[{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/bia"}]}'
               ;;
             macos-aarch64)
-              targets='{"include":[{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
+              targets='{"include":[{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/bia"}]}'
               ;;
             auto)
               case "$scope" in
                 full-matrix)
-                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/dory"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"","binary_path":"target/release/dory"},{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/dory"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
+                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/bia"},{"name":"linux-aarch64","runner":"ubuntu-24.04-arm","rust_target":"","binary_path":"target/release/bia"},{"name":"macos-x86_64","runner":"macos-13","rust_target":"","binary_path":"target/release/bia"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/bia"}]}'
                   ;;
                 first-signal)
-                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/dory"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/dory"}]}'
+                  targets='{"include":[{"name":"linux-x86_64","runner":"ubuntu-latest","rust_target":"","binary_path":"target/release/bia"},{"name":"macos-aarch64","runner":"macos-14","rust_target":"","binary_path":"target/release/bia"}]}'
                   ;;
                 *)
                   echo "unknown scope: $scope" >&2
@@ -91,7 +91,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
-      DORY_STATIC_PHP_PREFIX: ${{ github.workspace }}/.ripht/php
+      BIA_STATIC_PHP_PREFIX: ${{ github.workspace }}/.ripht/php
       RIPHT_PHP_SAPI_PREFIX: ${{ github.workspace }}/.ripht/php
     strategy:
       fail-fast: false
@@ -132,13 +132,13 @@ jobs:
         shell: bash
         run: ./scripts/build-static-engine.sh
 
-      - name: Build Dory release binary
+      - name: Build Bia release binary
         shell: bash
         run: |
           if [ -n "${{ matrix.rust_target }}" ]; then
-            cargo build --package dory --release --target "${{ matrix.rust_target }}"
+            cargo build --package bia --release --target "${{ matrix.rust_target }}"
           else
-            cargo build --package dory --release
+            cargo build --package bia --release
           fi
 
       - name: Smoke release binary
@@ -147,14 +147,14 @@ jobs:
           "${{ matrix.binary_path }}" --version
           "${{ matrix.binary_path }}" doctor
           "${{ matrix.binary_path }}" -r '1 + 1'
-          "${{ matrix.binary_path }}" -r 'dory()->dump("hello")'
+          "${{ matrix.binary_path }}" -r 'bia()->dump("hello")'
 
       - name: Smoke embedded runtime
         shell: bash
         run: |
-          "${{ matrix.binary_path }}" -r 'foreach (["Phalanx\\Stoa\\FastRouteCompiler", "Phalanx\\Hydra\\WorkerPool\\WorkerPool", "Phalanx\\Skopos\\ManagedProcess", "Phalanx\\Hermes\\WsRouteConfig", "Phalanx\\Argos\\Subnet", "GuzzleHttp\\Psr7\\ServerRequest", "Psr\\Http\\Message\\ResponseInterface", "FastRoute\\FastRoute", "IPLib\\Factory", "Symfony\\Component\\Runtime\\GenericRuntime", "Symfony\\Runtime\\Symfony\\Component\\Console\\ApplicationRuntime"] as $symbol) { if (!class_exists($symbol) && !interface_exists($symbol)) { throw new RuntimeException("missing " . $symbol); } }'
+          "${{ matrix.binary_path }}" -r 'foreach (["Phalanx\\Http\\FastRouteCompiler", "Phalanx\\Worker\\WorkerPool\\WorkerPool", "Phalanx\\DevServer\\ManagedProcess", "Phalanx\\WebSocket\\WsRouteConfig", "Phalanx\\Network\\Subnet", "GuzzleHttp\\Psr7\\ServerRequest", "Psr\\Http\\Message\\ResponseInterface", "FastRoute\\FastRoute", "IPLib\\Factory", "Symfony\\Component\\Runtime\\GenericRuntime", "Symfony\\Runtime\\Symfony\\Component\\Console\\ApplicationRuntime"] as $symbol) { if (!class_exists($symbol) && !interface_exists($symbol)) { throw new RuntimeException("missing " . $symbol); } }'
           "${{ matrix.binary_path }}" -r 'if (!function_exists("FastRoute\\simpleDispatcher")) { throw new RuntimeException("missing FastRoute functions"); }'
-          "${{ matrix.binary_path }}" -r 'dump((new Phalanx\Argos\Subnet("127.0.0.0/30"))->contains("127.0.0.1"))'
+          "${{ matrix.binary_path }}" -r 'dump((new Phalanx\Network\Subnet("127.0.0.0/30"))->contains("127.0.0.1"))'
 
       - name: Run Rust checks
         shell: bash
@@ -163,12 +163,12 @@ jobs:
           if [ -n "${{ matrix.rust_target }}" ]; then
             target_args=(--target "${{ matrix.rust_target }}")
           fi
-          cargo clippy --package dory --all-targets "${target_args[@]}"
-          cargo test --package dory "${target_args[@]}"
-          cargo test --package dory "${target_args[@]}" -- --ignored
+          cargo clippy --package bia --all-targets "${target_args[@]}"
+          cargo test --package bia "${target_args[@]}"
+          cargo test --package bia "${target_args[@]}" -- --ignored
 
       - name: Run gauntlet
         shell: bash
         env:
-          DORY_BIN: ${{ matrix.binary_path }}
+          BIA_BIN: ${{ matrix.binary_path }}
         run: bash tests/scripts/gauntlet.sh

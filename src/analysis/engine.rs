@@ -136,7 +136,7 @@ impl CodeQueryEngine {
     pub fn dispatch_json(&self, request_json: &str) -> String {
         let request = match serde_json::from_str::<CodeQueryRequest>(request_json) {
             Ok(request) => request,
-            Err(error) => return error_json(format!("invalid Dory code query request: {error}")),
+            Err(error) => return error_json(format!("invalid Bia code query request: {error}")),
         };
 
         match request {
