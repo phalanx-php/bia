@@ -52,21 +52,17 @@ $context = [
     'argv' => $argv,
 ];
 
-$exitCode = \Phalanx\Console\Application\Console::starting($context)
+$exitCode = \Phalanx\Console\Console::starting($context)
     ->providers(
         new \Phalanx\Bia\Runtime\BiaServiceBundle(),
-        new \Phalanx\HttpClient\HttpServiceBundle(),
+        new \Phalanx\HttpClient\Bundle(),
         new \Phalanx\Filesystem\FilesystemServiceBundle(),
         new \Phalanx\Network\NetworkServiceBundle(),
-        new \Phalanx\WebSocket\WsServiceBundle(),
+        new \Phalanx\WebSocket\Bundle(),
     )
     ->commands(\Phalanx\Bia\Command\BiaCommandGroup::commands())
     ->withErrorRenderers(new \Phalanx\Bia\Console\ScriptFaultRenderer())
-    ->withConsoleConfig(new \Phalanx\Console\Application\ConsoleConfig(
-        argv: array_slice($argv, 1),
-        defaultCommand: 'help',
-        scriptName: 'bia',
-    ))
+    ->default('run')
     ->run();
 
 // The embed SAPI doesn't propagate exit() codes to the host. Write it to
