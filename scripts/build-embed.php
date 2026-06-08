@@ -57,25 +57,14 @@ if ($missingEagerFiles !== []) {
     exit(1);
 }
 
-if (file_exists($outputPath)) {
-    unlink($outputPath);
-}
-
-$archive = new PharData($outputPath);
 $classMap = [];
+$archiveEntries = [];
 $eagerFileRealPaths = eagerFileRealPaths($eagerFiles);
 
 foreach ($packages as [$namespace, $srcDir]) {
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($srcDir, FilesystemIterator::SKIP_DOTS),
-    );
+    $files = phpFiles($srcDir);
 
-    foreach ($iterator as $file) {
-        if ($file->getExtension() !== 'php') {
-            continue;
-        }
-
-        $realPath = $file->getRealPath();
+    foreach ($files as $realPath) {
         $relativePath = substr($realPath, strlen($srcDir) + 1);
 
         if (isset($eagerFileRealPaths[$realPath]) || isPackageTestPath($relativePath)) {
@@ -83,7 +72,7 @@ foreach ($packages as [$namespace, $srcDir]) {
         }
 
         $archivePath = 'src/' . str_replace('\\', '/', $namespace) . $relativePath;
-        $archive->addFile($realPath, $archivePath);
+        $archiveEntries[$archivePath] = fileContents($realPath);
 
         $className = classNameFromPath($namespace, $relativePath);
         if ($className !== null) {
@@ -94,12 +83,14 @@ foreach ($packages as [$namespace, $srcDir]) {
 
 foreach ($eagerFiles as $name => $path) {
     if (is_file($path)) {
-        $archive->addFile($path, $name);
+        $archiveEntries[$name] = fileContents($path);
     }
 }
 
 $autoloaderContent = generateAutoloader($classMap, array_keys($eagerFiles));
-$archive->addFromString('vendor/autoload.php', $autoloaderContent);
+$archiveEntries['vendor/autoload.php'] = $autoloaderContent;
+
+writeTarArchive($outputPath, $archiveEntries);
 
 $size = filesize($outputPath);
 $classCount = count($classMap);
@@ -263,4 +254,143 @@ function formatBytes(int $bytes): string
     }
 
     return round($bytes / 1048576, 1) . 'MB';
+}
+
+/**
+ * @return list<string>
+ */
+function phpFiles(string $srcDir): array
+{
+    $files = [];
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($srcDir, FilesystemIterator::SKIP_DOTS),
+    );
+
+    foreach ($iterator as $file) {
+        if ($file->getExtension() !== 'php') {
+            continue;
+        }
+
+        $realPath = $file->getRealPath();
+        if ($realPath !== false) {
+            $files[] = $realPath;
+        }
+    }
+
+    sort($files);
+
+    return $files;
+}
+
+function fileContents(string $path): string
+{
+    $contents = file_get_contents($path);
+
+    if (!is_string($contents)) {
+        throw new RuntimeException("Unable to read {$path}.");
+    }
+
+    return $contents;
+}
+
+/**
+ * @param array<string, string> $entries
+ */
+function writeTarArchive(string $outputPath, array $entries): void
+{
+    ksort($entries);
+
+    $handle = fopen($outputPath, 'wb');
+
+    if (!is_resource($handle)) {
+        throw new RuntimeException("Unable to open {$outputPath} for writing.");
+    }
+
+    foreach ($entries as $path => $contents) {
+        writeTarEntry($handle, $path, $contents);
+    }
+
+    fwrite($handle, str_repeat("\0", 1024));
+    fclose($handle);
+}
+
+/**
+ * @param resource $handle
+ */
+function writeTarEntry($handle, string $path, string $contents): void
+{
+    [$name, $prefix] = tarNameParts($path);
+
+    $header = str_repeat("\0", 512);
+    writeTarField($header, 0, 100, $name);
+    writeTarField($header, 100, 8, tarOctal(0644, 7));
+    writeTarField($header, 108, 8, tarOctal(0, 7));
+    writeTarField($header, 116, 8, tarOctal(0, 7));
+    writeTarField($header, 124, 12, tarOctal(strlen($contents), 11));
+    writeTarField($header, 136, 12, tarOctal(0, 11));
+    writeTarField($header, 148, 8, '        ');
+    writeTarField($header, 156, 1, '0');
+    writeTarField($header, 257, 6, "ustar\0");
+    writeTarField($header, 263, 2, '00');
+    writeTarField($header, 345, 155, $prefix);
+
+    writeTarField($header, 148, 8, str_pad(decoct(tarChecksum($header)), 6, '0', STR_PAD_LEFT) . "\0 ");
+
+    fwrite($handle, $header);
+    fwrite($handle, $contents);
+
+    $padding = strlen($contents) % 512;
+    if ($padding !== 0) {
+        fwrite($handle, str_repeat("\0", 512 - $padding));
+    }
+}
+
+/**
+ * @return array{string, string}
+ */
+function tarNameParts(string $path): array
+{
+    $path = str_replace('\\\\', '/', $path);
+
+    if (strlen($path) <= 100) {
+        return [$path, ''];
+    }
+
+    $offset = strlen($path);
+    while (($offset = strrpos(substr($path, 0, $offset), '/')) !== false) {
+        $prefix = substr($path, 0, $offset);
+        $name = substr($path, $offset + 1);
+
+        if (strlen($prefix) <= 155 && strlen($name) <= 100) {
+            return [$name, $prefix];
+        }
+    }
+
+    throw new RuntimeException("Tar path is too long: {$path}.");
+}
+
+function tarOctal(int $value, int $digits): string
+{
+    return str_pad(decoct($value), $digits, '0', STR_PAD_LEFT) . "\0";
+}
+
+function tarChecksum(string $header): int
+{
+    $checksum = 0;
+
+    for ($i = 0; $i < 512; $i++) {
+        $checksum += ord($header[$i]);
+    }
+
+    return $checksum;
+}
+
+function writeTarField(string &$header, int $offset, int $length, string $value): void
+{
+    $header = substr_replace(
+        $header,
+        substr(str_pad($value, $length, "\0"), 0, $length),
+        $offset,
+        $length,
+    );
 }

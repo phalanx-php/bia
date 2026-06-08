@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
@@ -146,7 +147,7 @@ fn run_test(root: &PathBuf) -> ExitCode {
 }
 
 fn run_check(root: &PathBuf) -> ExitCode {
-    if run_embed(root) != ExitCode::SUCCESS {
+    if run_embed_stability_check(root) != ExitCode::SUCCESS {
         return ExitCode::from(1);
     }
 
@@ -168,6 +169,42 @@ fn run_check(root: &PathBuf) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+fn run_embed_stability_check(root: &PathBuf) -> ExitCode {
+    if run_embed(root) != ExitCode::SUCCESS {
+        return ExitCode::from(1);
+    }
+
+    let first = match fs::read(root.join("embedded/bia-runtime.tar")) {
+        Ok(contents) => contents,
+        Err(error) => {
+            eprintln!("failed to read embedded runtime tar after first build: {error}");
+
+            return ExitCode::from(1);
+        }
+    };
+
+    if run_embed(root) != ExitCode::SUCCESS {
+        return ExitCode::from(1);
+    }
+
+    let second = match fs::read(root.join("embedded/bia-runtime.tar")) {
+        Ok(contents) => contents,
+        Err(error) => {
+            eprintln!("failed to read embedded runtime tar after second build: {error}");
+
+            return ExitCode::from(1);
+        }
+    };
+
+    if first != second {
+        eprintln!("embedded runtime tar is not deterministic across consecutive builds");
+
+        return ExitCode::from(1);
+    }
+
+    ExitCode::SUCCESS
 }
 
 fn workspace_root() -> PathBuf {
