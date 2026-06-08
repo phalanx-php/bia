@@ -306,12 +306,15 @@ function writeTarArchive(string $outputPath, array $entries): void
         throw new RuntimeException("Unable to open {$outputPath} for writing.");
     }
 
-    foreach ($entries as $path => $contents) {
-        writeTarEntry($handle, $path, $contents);
-    }
+    try {
+        foreach ($entries as $path => $contents) {
+            writeTarEntry($handle, $path, $contents);
+        }
 
-    fwrite($handle, str_repeat("\0", 1024));
-    fclose($handle);
+        writeBytes($handle, str_repeat("\0", 1024));
+    } finally {
+        fclose($handle);
+    }
 }
 
 /**
@@ -336,12 +339,12 @@ function writeTarEntry($handle, string $path, string $contents): void
 
     writeTarField($header, 148, 8, str_pad(decoct(tarChecksum($header)), 6, '0', STR_PAD_LEFT) . "\0 ");
 
-    fwrite($handle, $header);
-    fwrite($handle, $contents);
+    writeBytes($handle, $header);
+    writeBytes($handle, $contents);
 
     $padding = strlen($contents) % 512;
     if ($padding !== 0) {
-        fwrite($handle, str_repeat("\0", 512 - $padding));
+        writeBytes($handle, str_repeat("\0", 512 - $padding));
     }
 }
 
@@ -350,7 +353,7 @@ function writeTarEntry($handle, string $path, string $contents): void
  */
 function tarNameParts(string $path): array
 {
-    $path = str_replace('\\\\', '/', $path);
+    $path = str_replace('\\', '/', $path);
 
     if (strlen($path) <= 100) {
         return [$path, ''];
@@ -393,4 +396,23 @@ function writeTarField(string &$header, int $offset, int $length, string $value)
         $offset,
         $length,
     );
+}
+
+/**
+ * @param resource $handle
+ */
+function writeBytes($handle, string $bytes): void
+{
+    $length = strlen($bytes);
+    $offset = 0;
+
+    while ($offset < $length) {
+        $written = fwrite($handle, substr($bytes, $offset));
+
+        if ($written === false || $written === 0) {
+            throw new RuntimeException('Unable to write embedded runtime archive.');
+        }
+
+        $offset += $written;
+    }
 }
