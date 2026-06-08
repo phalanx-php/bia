@@ -6,6 +6,7 @@ return [
     'modules' => [
         'Agents' => 'not-runtime-binary',
         'AiProviders' => 'embedded',
+        'Bia' => 'embedded',
         'Cli' => 'embedded',
         'Config' => 'embedded',
         'Console' => 'embedded',
