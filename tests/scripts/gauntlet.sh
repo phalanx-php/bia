@@ -6,6 +6,7 @@ PASS=0
 FAIL=0
 WORKDIR="$(mktemp -d)"
 HTTP_PID=""
+BIA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 cleanup() {
     if [[ -n "$HTTP_PID" ]]; then
@@ -61,9 +62,17 @@ assert_exit() {
 
 assert_contains "version" "bia" "$($BIA --version 2>&1)"
 
+out=$($BIA 2>&1)
+assert_contains "bare help shows usage" "Usage:" "$out"
+assert_contains "bare help shows run" "run" "$out"
+assert_contains "bare help shows doctor" "doctor" "$out"
+
 out=$(echo "x" | $BIA --help 2>&1)
 assert_contains "help shows run" "run" "$out"
 assert_contains "help shows doctor" "doctor" "$out"
+
+smoke_code="$(php "$BIA_ROOT/scripts/embed-smoke-code.php")"
+assert_eq "embedded matrix symbols" "" "$(echo x | $BIA -r "$smoke_code" 2>/dev/null)"
 
 out=$($BIA doctor 2>/dev/null)
 assert_contains "doctor PHP pass" "[pass] PHP >= 8.4" "$out"

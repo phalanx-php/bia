@@ -13,91 +13,11 @@ declare(strict_types=1);
 
 $toolDir = dirname(__DIR__);
 $workspaceRoot = dirname($toolDir, 2);
-$monorepoSrc = $workspaceRoot . '/phalanx/src';
-$biaRuntime = $workspaceRoot . '/libs/bia-runtime';
 $outputPath = $toolDir . '/embedded/bia-runtime.tar';
 
-$monorepoVendor = $workspaceRoot . '/phalanx/vendor';
-
-$packages = [
-    ['Phalanx\\', $monorepoSrc . '/Runtime/src'],
-    ['Phalanx\\Mark\\', $monorepoSrc . '/Mark/src'],
-    ['Phalanx\\Console\\', $monorepoSrc . '/Console/src'],
-    ['Phalanx\\Cli\\', $monorepoSrc . '/Cli/src'],
-    ['Phalanx\\Config\\', $monorepoSrc . '/Config/src'],
-    ['Phalanx\\Stream\\', $monorepoSrc . '/Stream/src'],
-    ['Phalanx\\HttpClient\\', $monorepoSrc . '/HttpClient/src'],
-    ['Phalanx\\Filesystem\\', $monorepoSrc . '/Filesystem/src'],
-    ['Phalanx\\AiProviders\\', $monorepoSrc . '/AiProviders/src'],
-    ['Phalanx\\Http\\', $monorepoSrc . '/Http/src'],
-    ['Phalanx\\Worker\\', $monorepoSrc . '/Worker/src'],
-    ['Phalanx\\DevServer\\', $monorepoSrc . '/DevServer/src'],
-    ['Phalanx\\WebSocket\\', $monorepoSrc . '/WebSocket/src'],
-    ['Phalanx\\Network\\', $monorepoSrc . '/Network/src'],
-    ['Phalanx\\Bia\\', $biaRuntime . '/src'],
-    ['GuzzleHttp\\Psr7\\', $monorepoVendor . '/guzzlehttp/psr7/src'],
-    ['Psr\\Http\\Client\\', $monorepoVendor . '/psr/http-client/src'],
-    ['Psr\\Http\\Message\\', $monorepoVendor . '/psr/http-factory/src'],
-    ['Psr\\Http\\Message\\', $monorepoVendor . '/psr/http-message/src'],
-    ['Psr\\Container\\', $monorepoVendor . '/psr/container/src'],
-    ['Psr\\EventDispatcher\\', $monorepoVendor . '/psr/event-dispatcher/src'],
-    ['Psr\\Log\\', $monorepoVendor . '/psr/log/src'],
-    ['Psr\\SimpleCache\\', $monorepoVendor . '/psr/simple-cache/src'],
-    ['FastRoute\\', $monorepoVendor . '/nikic/fast-route/src'],
-    ['IPLib\\', $monorepoVendor . '/mlocati/ip-lib/src'],
-    ['Symfony\\Contracts\\EventDispatcher\\', $monorepoVendor . '/symfony/event-dispatcher-contracts'],
-    ['Symfony\\Contracts\\Service\\', $monorepoVendor . '/symfony/service-contracts'],
-    ['Symfony\\Contracts\\Translation\\', $monorepoVendor . '/symfony/translation-contracts'],
-    ['Symfony\\Component\\Console\\', $monorepoVendor . '/symfony/console'],
-    ['Symfony\\Component\\EventDispatcher\\', $monorepoVendor . '/symfony/event-dispatcher'],
-    ['Symfony\\Component\\Filesystem\\', $monorepoVendor . '/symfony/filesystem'],
-    ['Symfony\\Component\\Process\\', $monorepoVendor . '/symfony/process'],
-    ['Symfony\\Component\\Runtime\\', $monorepoVendor . '/symfony/runtime'],
-    ['Symfony\\Runtime\\Symfony\\Component\\', $monorepoVendor . '/symfony/runtime/Internal'],
-    ['Symfony\\Component\\String\\', $monorepoVendor . '/symfony/string'],
-    ['Symfony\\Component\\Uid\\', $monorepoVendor . '/symfony/uid'],
-    ['Symfony\\Component\\VarDumper\\', $monorepoVendor . '/symfony/var-dumper'],
-    ['Symfony\\Polyfill\\Ctype\\', $monorepoVendor . '/symfony/polyfill-ctype'],
-    ['Symfony\\Polyfill\\Intl\\Grapheme\\', $monorepoVendor . '/symfony/polyfill-intl-grapheme'],
-    ['Symfony\\Polyfill\\Intl\\Idn\\', $monorepoVendor . '/symfony/polyfill-intl-idn'],
-    ['Symfony\\Polyfill\\Intl\\Normalizer\\', $monorepoVendor . '/symfony/polyfill-intl-normalizer'],
-    ['Symfony\\Polyfill\\Mbstring\\', $monorepoVendor . '/symfony/polyfill-mbstring'],
-    ['Symfony\\Polyfill\\Php80\\', $monorepoVendor . '/symfony/polyfill-php80'],
-    ['Symfony\\Polyfill\\Php81\\', $monorepoVendor . '/symfony/polyfill-php81'],
-    ['Symfony\\Polyfill\\Php84\\', $monorepoVendor . '/symfony/polyfill-php84'],
-    ['Symfony\\Polyfill\\Php85\\', $monorepoVendor . '/symfony/polyfill-php85'],
-    ['Symfony\\Polyfill\\Php86\\', $monorepoVendor . '/symfony/polyfill-php86'],
-    ['Symfony\\Polyfill\\Uuid\\', $monorepoVendor . '/symfony/polyfill-uuid'],
-];
-
-$eagerFiles = [
-    'functions.php' => $biaRuntime . '/src/functions.php',
-    'vendor/ralouphie/getallheaders/src/getallheaders.php' => $monorepoVendor . '/ralouphie/getallheaders/src/getallheaders.php',
-    'vendor/nikic/fast-route/src/functions.php' => $monorepoVendor . '/nikic/fast-route/src/functions.php',
-    'vendor/symfony/deprecation-contracts/function.php' => $monorepoVendor . '/symfony/deprecation-contracts/function.php',
-    'vendor/symfony/polyfill-ctype/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-ctype/bootstrap.php',
-    'vendor/symfony/polyfill-ctype/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-ctype/bootstrap80.php',
-    'vendor/symfony/polyfill-intl-grapheme/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-intl-grapheme/bootstrap.php',
-    'vendor/symfony/polyfill-intl-grapheme/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-intl-grapheme/bootstrap80.php',
-    'vendor/symfony/polyfill-intl-idn/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-intl-idn/bootstrap.php',
-    'vendor/symfony/polyfill-intl-idn/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-intl-idn/bootstrap80.php',
-    'vendor/symfony/polyfill-intl-normalizer/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-intl-normalizer/bootstrap.php',
-    'vendor/symfony/polyfill-intl-normalizer/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-intl-normalizer/bootstrap80.php',
-    'vendor/symfony/polyfill-mbstring/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-mbstring/bootstrap.php',
-    'vendor/symfony/polyfill-mbstring/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-mbstring/bootstrap80.php',
-    'vendor/symfony/polyfill-php80/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php80/bootstrap.php',
-    'vendor/symfony/polyfill-php81/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php81/bootstrap.php',
-    'vendor/symfony/polyfill-php84/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php84/bootstrap.php',
-    'vendor/symfony/polyfill-php84/bootstrap82.php' => $monorepoVendor . '/symfony/polyfill-php84/bootstrap82.php',
-    'vendor/symfony/polyfill-php85/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php85/bootstrap.php',
-    'vendor/symfony/polyfill-php85/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-php85/bootstrap80.php',
-    'vendor/symfony/polyfill-php86/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-php86/bootstrap.php',
-    'vendor/symfony/polyfill-php86/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-php86/bootstrap80.php',
-    'vendor/symfony/polyfill-uuid/bootstrap.php' => $monorepoVendor . '/symfony/polyfill-uuid/bootstrap.php',
-    'vendor/symfony/polyfill-uuid/bootstrap80.php' => $monorepoVendor . '/symfony/polyfill-uuid/bootstrap80.php',
-    'vendor/symfony/string/Resources/functions.php' => $monorepoVendor . '/symfony/string/Resources/functions.php',
-    'vendor/symfony/var-dumper/Resources/functions/dump.php' => $monorepoVendor . '/symfony/var-dumper/Resources/functions/dump.php',
-];
+$matrix = require $toolDir . '/embedded/matrix.php';
+$packages = matrixPackages($matrix, $workspaceRoot);
+$eagerFiles = matrixEagerFiles($matrix, $workspaceRoot);
 
 $missingPackageDirs = [];
 
@@ -116,6 +36,8 @@ if ($missingPackageDirs !== []) {
 
     exit(1);
 }
+
+assertCurrentModulesAreAccounted($matrix, $workspaceRoot);
 
 $missingEagerFiles = [];
 
@@ -233,6 +155,82 @@ function generateAutoloader(array $classMap, array $eagerFiles): string
 function isPackageTestPath(string $relativePath): bool
 {
     return str_starts_with($relativePath, 'tests' . DIRECTORY_SEPARATOR);
+}
+
+/**
+ * @param array<string, mixed> $matrix
+ * @return list<array{string, string}>
+ */
+function matrixPackages(array $matrix, string $workspaceRoot): array
+{
+    $packages = [];
+
+    foreach ($matrix['packages'] ?? [] as $entry) {
+        if (!is_array($entry) || !isset($entry['namespace'], $entry['path'])) {
+            throw new RuntimeException('Invalid Bia embed matrix package entry.');
+        }
+
+        $packages[] = [$entry['namespace'], resolveMatrixPath($workspaceRoot, $entry['path'])];
+    }
+
+    return $packages;
+}
+
+/**
+ * @param array<string, mixed> $matrix
+ * @return array<string, string>
+ */
+function matrixEagerFiles(array $matrix, string $workspaceRoot): array
+{
+    $files = [];
+
+    foreach ($matrix['eager_files'] ?? [] as $archivePath => $path) {
+        if (!is_string($archivePath) || !is_string($path)) {
+            throw new RuntimeException('Invalid Bia embed matrix eager file entry.');
+        }
+
+        $files[$archivePath] = resolveMatrixPath($workspaceRoot, $path);
+    }
+
+    return $files;
+}
+
+function resolveMatrixPath(string $workspaceRoot, string $path): string
+{
+    return $workspaceRoot . '/' . ltrim($path, '/');
+}
+
+/** @param array<string, mixed> $matrix */
+function assertCurrentModulesAreAccounted(array $matrix, string $workspaceRoot): void
+{
+    $modules = $matrix['modules'] ?? null;
+
+    if (!is_array($modules)) {
+        throw new RuntimeException('Bia embed matrix must account for current Phalanx modules.');
+    }
+
+    $missing = [];
+
+    foreach (glob($workspaceRoot . '/phalanx/src/*/composer.json') ?: [] as $composerPath) {
+        $module = basename(dirname($composerPath));
+
+        if (!array_key_exists($module, $modules)) {
+            $missing[] = $module;
+        }
+    }
+
+    if ($missing === []) {
+        return;
+    }
+
+    sort($missing);
+    fwrite(STDERR, "ERROR: Bia embed matrix does not account for current modules:\n");
+
+    foreach ($missing as $module) {
+        fwrite(STDERR, "  - {$module}\n");
+    }
+
+    exit(1);
 }
 
 /**

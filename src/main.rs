@@ -15,7 +15,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use error::BiaError;
 use ripht_php_sapi::{CliRequest, RiphtSapi, SapiConfig};
 use run_mode::RunMode;
@@ -38,6 +38,16 @@ fn run() -> Result<ExitCode, BiaError> {
 
     if let RunMode::FileNotFound(path) = &run_mode {
         return Err(BiaError::new(format!("script not found: {path}")));
+    }
+
+    if let RunMode::Help = &run_mode {
+        let mut command = cli::BiaCli::command();
+        command
+            .print_help()
+            .map_err(|error| BiaError::from_error("failed to print help", error))?;
+        println!();
+
+        return Ok(ExitCode::SUCCESS);
     }
 
     let runtime = embed::EmbeddedRuntime::extract()
@@ -104,6 +114,9 @@ fn run() -> Result<ExitCode, BiaError> {
             let json = serde_json::to_string(&cli.args)
                 .map_err(|error| BiaError::from_error("failed to serialize args", error))?;
             (None, json)
+        }
+        RunMode::Help => {
+            return Ok(ExitCode::SUCCESS);
         }
         RunMode::FileNotFound(path) => {
             return Err(BiaError::new(format!("script not found: {path}")));

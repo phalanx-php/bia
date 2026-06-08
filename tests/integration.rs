@@ -27,6 +27,21 @@ fn bia_with_stdin(input: &str) -> std::process::Output {
 
 #[test]
 #[ignore = "requires static PHP runtime"]
+fn test_bare_help() {
+    let output = bia().output().expect("failed to run");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "exit code: {}", output.status);
+    assert!(stdout.contains("Usage:"), "stdout: {stdout}");
+    assert!(stdout.contains("doctor"), "stdout: {stdout}");
+    assert!(
+        !stderr.contains("Missing required argument: script"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires static PHP runtime"]
 fn test_version() {
     let output = bia().arg("--version").output().expect("failed to run");
     let stdout = String::from_utf8_lossy(&output.stdout);

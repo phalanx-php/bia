@@ -20,12 +20,22 @@ if ($runtimeDir === false || !is_dir($runtimeDir)) {
     exit(126);
 }
 
+$functionsFile = $runtimeDir . '/functions.php';
+if (is_file($functionsFile) && !function_exists('bia')) {
+    require $functionsFile;
+}
+
 require $runtimeDir . '/vendor/autoload.php';
 
 // Rust passes args as JSON via BIA_ARGV because the embed SAPI doesn't
 // populate $argv or $_SERVER['argv'] as an array the way CLI SAPI does.
 $biaArgv = getenv('BIA_ARGV');
 $argv = $biaArgv !== false ? json_decode($biaArgv, true) : [];
+
+if (!is_array($argv)) {
+    fwrite(STDERR, "Fatal: invalid BIA_ARGV payload.\n");
+    exit(126);
+}
 
 // Console expects argv[0] to be the script name (it strips it via array_slice).
 array_unshift($argv, 'bia');

@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=embedded/bootstrap.php");
     println!("cargo:rerun-if-changed=embedded/bia-runtime.tar");
+    println!("cargo:rerun-if-changed=scripts/build-static-engine.sh");
     println!("cargo:rerun-if-env-changed=BIA_STATIC_PHP_PREFIX");
 
     let prefix = env::var_os("BIA_STATIC_PHP_PREFIX")
@@ -28,7 +29,7 @@ fn main() {
 
     if !lib_dir.is_dir() {
         println!(
-            "cargo:warning=Bia static PHP libraries not found at {}; run scripts/build-static-engine.sh or set BIA_STATIC_PHP_PREFIX",
+            "cargo:warning=BIA_STATIC_RUNTIME_MISSING: static PHP libraries not found at {}; run ./scripts/build-static-engine.sh or set BIA_STATIC_PHP_PREFIX",
             prefix.display()
         );
 
@@ -41,42 +42,17 @@ fn main() {
         return;
     }
 
+    if lib_dir.join("libphp.a").is_file() {
+        panic!(
+            "BIA_LINKER_MANIFEST_REQUIRED: Bia linker manifest not found at {}. Run ./scripts/build-static-engine.sh to regenerate the static PHP runtime.",
+            link_flags.display()
+        );
+    }
+
     println!(
-        "cargo:warning=Bia linker manifest not found at {}; falling back to archive scan",
-        link_flags.display()
+        "cargo:warning=BIA_STATIC_RUNTIME_MISSING: static PHP libphp.a not found at {}; run ./scripts/build-static-engine.sh or set BIA_STATIC_PHP_PREFIX",
+        lib_dir.display()
     );
-
-    println!("cargo:rustc-link-search=native={}", lib_dir.display());
-
-    println!("cargo:rustc-link-lib=static=php");
-
-    let mut libs = fs::read_dir(&lib_dir)
-        .expect("failed to read Bia static PHP lib directory")
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .collect::<Vec<_>>();
-
-    libs.sort();
-
-    for path in libs {
-        if path.extension().is_some_and(|ext| ext == "a")
-            && let Some(file_name) = path.file_stem().and_then(|name| name.to_str())
-            && file_name.starts_with("lib")
-            && file_name != "libphp"
-        {
-            println!("cargo:rustc-link-lib=static={}", &file_name[3..]);
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        println!("cargo:rustc-link-lib=framework=CoreServices");
-        println!("cargo:rustc-link-lib=framework=CoreFoundation");
-        println!("cargo:rustc-link-lib=framework=SystemConfiguration");
-        println!("cargo:rustc-link-lib=framework=Security");
-    }
-
-    #[cfg(unix)]
-    println!("cargo:rustc-link-lib=resolv");
 }
 
 fn emit_link_flags(path: &Path) {

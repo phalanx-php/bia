@@ -5,6 +5,7 @@ use crate::cli;
 use crate::error::BiaError;
 
 pub enum RunMode {
+    Help,
     Inline(String),
     File(String),
     FileNotFound(String),
@@ -16,7 +17,11 @@ pub fn resolve(cli: &cli::BiaCli) -> Result<RunMode, BiaError> {
         return Ok(resolve_code_arg(arg));
     }
 
-    if cli.args.is_empty() && !std::io::stdin().is_terminal() {
+    if !cli.args.is_empty() {
+        return Ok(RunMode::Passthrough);
+    }
+
+    if !std::io::stdin().is_terminal() {
         let mut buf = String::new();
         std::io::stdin()
             .read_to_string(&mut buf)
@@ -28,7 +33,7 @@ pub fn resolve(cli: &cli::BiaCli) -> Result<RunMode, BiaError> {
         }
     }
 
-    Ok(RunMode::Passthrough)
+    Ok(RunMode::Help)
 }
 
 fn resolve_code_arg(arg: &str) -> RunMode {
@@ -78,6 +83,30 @@ mod tests {
         match resolve_code_arg("https://example.com") {
             RunMode::Inline(code) => assert_eq!(code, "https://example.com"),
             _ => panic!("expected inline mode"),
+        }
+    }
+
+    #[test]
+    fn treats_positional_args_as_passthrough() {
+        let cli = cli::BiaCli {
+            verbose: false,
+            code: None,
+            args: vec!["doctor".to_string()],
+        };
+
+        match resolve(&cli).expect("run mode") {
+            RunMode::Passthrough => {}
+            _ => panic!("expected passthrough mode"),
+        }
+    }
+
+    #[test]
+    fn treats_existing_code_arg_path_as_file() {
+        let file = tempfile::NamedTempFile::with_suffix(".php").expect("temp file");
+
+        match resolve_code_arg(file.path().to_str().expect("utf8 path")) {
+            RunMode::File(path) => assert!(path.ends_with(".php")),
+            _ => panic!("expected file mode"),
         }
     }
 }
