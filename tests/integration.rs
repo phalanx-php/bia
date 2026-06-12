@@ -121,6 +121,18 @@ fn test_run_fixture() {
 
 #[test]
 #[ignore = "requires static PHP runtime"]
+fn test_php_exit_code_reaches_host() {
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/exit-42.php");
+    let output = bia()
+        .args(["run", fixture])
+        .output()
+        .expect("failed to run");
+
+    assert_eq!(output.status.code(), Some(42));
+}
+
+#[test]
+#[ignore = "requires static PHP runtime"]
 fn test_run_inline() {
     let output = bia()
         .args(["run", "1 + 1"])

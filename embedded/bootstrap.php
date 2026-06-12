@@ -7,12 +7,6 @@ if (!defined('STDIN'))  { define('STDIN',  fopen('php://stdin',  'r')); }
 if (!defined('STDOUT')) { define('STDOUT', fopen('php://stdout', 'w')); }
 if (!defined('STDERR')) { define('STDERR', fopen('php://stderr', 'w')); }
 
-// Restore the user's working directory — the embed SAPI may not inherit it.
-$pwd = $_SERVER['PWD'] ?? getenv('PWD');
-if ($pwd !== false && is_dir($pwd)) {
-    chdir($pwd);
-}
-
 if (!function_exists('phalanx_host_facts')) {
     fwrite(STDERR, "Fatal: host facts native function not registered.\n");
     exit(126);
@@ -32,6 +26,11 @@ if (!is_string($runtimeDir) || !is_dir($runtimeDir)) {
     exit(126);
 }
 
+$cwd = $rawHostFacts['paths']['cwd'] ?? null;
+if (is_string($cwd) && is_dir($cwd)) {
+    chdir($cwd);
+}
+
 $functionsFile = $runtimeDir . '/functions.php';
 if (is_file($functionsFile) && !function_exists('bia')) {
     require $functionsFile;
@@ -46,13 +45,14 @@ try {
     exit(126);
 }
 
-$exitCode = \Phalanx\Bia\Runtime\BiaCli::fromNativeFacts($hostFacts->toArray())->run();
+$_SERVER = [];
+$_ENV = [];
+$_REQUEST = [];
+$_GET = [];
+$_POST = [];
+$_COOKIE = [];
+$_FILES = [];
 
-// The embed SAPI doesn't propagate exit() codes to the host. Write it to
-// a file that the Rust host reads after execution completes.
-$exitFile = getenv('BIA_EXIT_FILE');
-if ($exitFile !== false) {
-    file_put_contents($exitFile, (string) $exitCode);
-}
+$exitCode = \Phalanx\Bia\Runtime\BiaCli::fromNativeFacts($hostFacts->toArray())->run();
 
 exit($exitCode);

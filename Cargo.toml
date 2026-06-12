@@ -9,7 +9,7 @@ rust-version = "1.95.0"
 description = "Phalanx Scripting Environment"
 
 [dependencies]
-ripht-php-sapi = { git = "https://github.com/jhavenz/ripht-php-sapi", rev = "030265a6130edca9443dfd4964e7d96d9c5a9ed9" }
+ripht-php-sapi = { git = "https://github.com/jhavenz/ripht-php-sapi", rev = "dab1ceb577d4937306e29a6e796e6c57ed7a70ea" }
 tempfile = "3.27.0"
 clap = { version = "4", features = ["derive"] }
 signal-hook = "0.3"

@@ -50,6 +50,16 @@ impl EnvMap {
         self.values.get(key).map(|value| value.value.as_str())
     }
 
+    pub fn warn(
+        &mut self,
+        code: &'static str,
+        message: impl Into<String>,
+        key: Option<String>,
+        source: Option<String>,
+    ) {
+        self.issue(EnvSeverity::Warn, code, message.into(), key, source, None);
+    }
+
     fn merge_file(&mut self, path: &Path, label: &str, policy: &EnvSection) {
         let bytes = match fs::read(path) {
             Ok(bytes) => bytes,

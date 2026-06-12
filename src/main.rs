@@ -3,7 +3,6 @@ mod cli;
 mod embed;
 mod env_map;
 mod error;
-mod exit_status;
 mod hooks;
 mod host_config;
 mod host_facts;
@@ -80,6 +79,17 @@ fn run() -> Result<ExitCode, BiaError> {
     RiphtSapi::configure(
         SapiConfig::new()
             .sapi_name("cli")
+            .ignore_php_ini(true)
+            .ini_entries(vec![
+                ("variables_order".to_string(), "".to_string()),
+                ("request_order".to_string(), "".to_string()),
+                ("register_argc_argv".to_string(), "0".to_string()),
+                ("output_buffering".to_string(), "4096".to_string()),
+                ("implicit_flush".to_string(), "0".to_string()),
+                ("html_errors".to_string(), "0".to_string()),
+                ("display_errors".to_string(), "1".to_string()),
+                ("log_errors".to_string(), "1".to_string()),
+            ])
             .native_functions(native_functions::entries()),
     )
     .map_err(|error| BiaError::from_error("failed to configure SAPI", error))?;
@@ -111,11 +121,6 @@ fn run() -> Result<ExitCode, BiaError> {
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown)).ok();
 
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&shutdown)).ok();
-
-    let exit_file = NamedTempFile::new()
-        .map_err(|error| BiaError::from_error("failed to create exit code file", error))?;
-
-    let exit_path = exit_file.path().to_string_lossy().into_owned();
 
     let (_inline_file, argv) = match &run_mode {
         RunMode::Inline(code) => {
@@ -150,7 +155,8 @@ fn run() -> Result<ExitCode, BiaError> {
         .as_ref()
         .and_then(|path| path.parent())
         .unwrap_or(cwd.as_path());
-    let env = env_map::EnvMap::load(env_root, &host.config.env);
+    let mut env = env_map::EnvMap::load(env_root, &host.config.env);
+    record_superglobal_ini_warnings(&mut env, &host.config);
     let app_env = host_facts::AppEnv::detect_from(&env).map_err(BiaError::new)?;
     let effective_verbose = cli.verbose || host.config.bia.verbose;
 
@@ -169,9 +175,7 @@ fn run() -> Result<ExitCode, BiaError> {
 
     host_facts::publish(&facts);
 
-    let req = CliRequest::new()
-        .with_working_dir(&cwd)
-        .with_env("BIA_EXIT_FILE", &exit_path);
+    let req = CliRequest::new().with_working_dir(&cwd);
 
     let ctx = match req.build(runtime.bootstrap.path()) {
         Ok(ctx) => ctx,
@@ -181,14 +185,50 @@ fn run() -> Result<ExitCode, BiaError> {
     let hooks = hooks::BiaHooks::new(Arc::clone(&shutdown));
 
     match php.execute_with_hooks(ctx, hooks) {
-        Ok(_result) => {
-            let code = exit_status::read_exit_code(exit_file.path())?;
-            if code == 0 {
+        Ok(result) => {
+            let status = result.exit_status();
+            if status <= 0 {
                 Ok(ExitCode::SUCCESS)
+            } else if status > u8::MAX as i32 {
+                Err(BiaError::new(format!(
+                    "PHP exit status was out of range: {status}"
+                )))
             } else {
-                Ok(ExitCode::from(code))
+                Ok(ExitCode::from(status as u8))
             }
         }
         Err(error) => Err(BiaError::new(error.to_string())),
+    }
+}
+
+fn record_superglobal_ini_warnings(env: &mut env_map::EnvMap, config: &host_config::HostConfig) {
+    for key in ["variables_order", "request_order"] {
+        if config
+            .php
+            .ini
+            .get(key)
+            .is_some_and(|value| !value.as_ini_value().is_empty())
+        {
+            env.warn(
+                "superglobal-ini-enabled",
+                format!("[php].ini {key} enables PHP superglobal population"),
+                Some(key.to_string()),
+                Some("phalanx.toml".to_string()),
+            );
+        }
+    }
+
+    if config
+        .php
+        .ini
+        .get("register_argc_argv")
+        .is_some_and(|value| value.as_ini_value() != "0")
+    {
+        env.warn(
+            "superglobal-ini-enabled",
+            "[php].ini register_argc_argv enables argv superglobal population",
+            Some("register_argc_argv".to_string()),
+            Some("phalanx.toml".to_string()),
+        );
     }
 }
