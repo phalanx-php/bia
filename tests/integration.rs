@@ -1,7 +1,88 @@
-use std::process::Command;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 fn bia() -> Command {
     Command::new(env!("CARGO_BIN_EXE_bia"))
+}
+
+fn free_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .expect("bind free port")
+        .local_addr()
+        .expect("local addr")
+        .port()
+}
+
+fn http_get(port: u16, path: &str, headers: &[(&str, &str)]) -> String {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect to bia serve");
+    let mut request =
+        format!("GET {path} HTTP/1.1\r\nHost: internal.example\r\nConnection: close\r\n");
+
+    for (name, value) in headers {
+        request.push_str(name);
+        request.push_str(": ");
+        request.push_str(value);
+        request.push_str("\r\n");
+    }
+
+    request.push_str("\r\n");
+    stream.write_all(request.as_bytes()).expect("write request");
+
+    let mut response = String::new();
+    match stream.read_to_string(&mut response) {
+        Ok(_) => {}
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::UnexpectedEof
+            ) =>
+        {
+            if response.is_empty() {
+                response.push_str("CONNECTION_RESET");
+            }
+        }
+        Err(error) => panic!("read response: {error}"),
+    }
+
+    response
+}
+
+fn wait_for_server(port: u16) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+
+    while Instant::now() < deadline {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return;
+        }
+
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    panic!("bia serve did not start on port {port}");
+}
+
+fn terminate(child: &mut Child) {
+    let _ = Command::new("kill")
+        .arg("-TERM")
+        .arg(child.id().to_string())
+        .status();
+}
+
+fn wait_or_kill(child: &mut Child) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+
+    while Instant::now() < deadline {
+        if child.try_wait().expect("poll child").is_some() {
+            return;
+        }
+
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    let _ = child.kill();
 }
 
 fn bia_with_stdin(input: &str) -> std::process::Output {
@@ -201,4 +282,133 @@ fn test_run_nonexistent() {
         .output()
         .expect("failed to run");
     assert!(!output.status.success(), "should fail for missing script");
+}
+
+#[test]
+#[ignore = "requires static PHP runtime with Swoole"]
+fn test_serve_trusts_configured_forwarded_headers() {
+    let temp = tempfile::tempdir().unwrap();
+    let port = free_port();
+
+    std::fs::write(
+        temp.path().join("phalanx.toml"),
+        format!(
+            r#"
+            [serve]
+            listen = "127.0.0.1:{port}"
+            behind-proxy = "nginx"
+            "#
+        ),
+    )
+    .unwrap();
+
+    let mut child = bia()
+        .arg("serve")
+        .current_dir(temp.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn bia serve");
+
+    wait_for_server(port);
+
+    let response = http_get(
+        port,
+        "/",
+        &[
+            ("X-Forwarded-For", "203.0.113.10, 127.0.0.1"),
+            ("X-Forwarded-Host", "public.example"),
+            ("X-Forwarded-Proto", "https"),
+        ],
+    );
+
+    terminate(&mut child);
+    wait_or_kill(&mut child);
+
+    assert!(response.contains("HTTP/1.1 200 OK"), "response: {response}");
+    assert!(
+        response.contains(r#""scheme":"https""#),
+        "response: {response}"
+    );
+    assert!(
+        response.contains(r#""host":"public.example""#),
+        "response: {response}"
+    );
+    assert!(
+        response.contains(r#""client_ip":"203.0.113.10""#),
+        "response: {response}"
+    );
+}
+
+#[test]
+#[ignore = "requires static PHP runtime with Swoole"]
+fn test_serve_sigterm_drains_and_refuses_new_work() {
+    let temp = tempfile::tempdir().unwrap();
+    let port = free_port();
+
+    std::fs::write(
+        temp.path().join("phalanx.toml"),
+        format!(
+            r#"
+            [serve]
+            listen = "127.0.0.1:{port}"
+
+            [swoole]
+            event-workers = 2
+
+            [bia]
+            timeout = "5s"
+            "#
+        ),
+    )
+    .unwrap();
+
+    std::fs::write(
+        temp.path().join("app.php"),
+        r#"<?php
+use Phalanx\Bia\Runtime\Serve\TrustedRequest;
+
+return static function (TrustedRequest $trusted, Swoole\Http\Request $request): string {
+    if (($request->server['request_uri'] ?? '/') === '/slow') {
+        usleep(500000);
+
+        return "slow done\n";
+    }
+
+    return "fast\n";
+};
+"#,
+    )
+    .unwrap();
+
+    let mut child = bia()
+        .args(["serve", "app.php"])
+        .current_dir(temp.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn bia serve");
+
+    wait_for_server(port);
+
+    let slow = thread::spawn(move || http_get(port, "/slow", &[]));
+
+    thread::sleep(Duration::from_millis(100));
+    terminate(&mut child);
+
+    let refused = http_get(port, "/", &[]);
+    let slow_response = slow.join().expect("slow request thread");
+
+    wait_or_kill(&mut child);
+
+    assert!(
+        slow_response.contains("slow done"),
+        "slow response: {slow_response}"
+    );
+    assert!(
+        refused.contains("503 Service Unavailable")
+            || refused.contains("draining")
+            || refused.contains("CONNECTION_RESET"),
+        "refused response: {refused}"
+    );
 }

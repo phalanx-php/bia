@@ -211,6 +211,7 @@ pub enum SwooleHook {
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct ServeSection {
     pub listen: Listen,
+    pub behind_proxy: Option<BehindProxy>,
 }
 
 impl ServeSection {
@@ -225,6 +226,35 @@ impl ServeSection {
                 Ok(())
             }
             Err(error) => Err(format!("[serve] cannot bind {}: {error}", self.listen.0)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BehindProxy {
+    Cloudflare,
+    Nginx,
+    AwsAlb,
+}
+
+impl BehindProxy {
+    pub fn trusted_headers(self) -> &'static [&'static str] {
+        match self {
+            Self::Cloudflare => &[
+                "cf-connecting-ip",
+                "cf-visitor",
+                "x-forwarded-for",
+                "x-forwarded-host",
+                "x-forwarded-proto",
+            ],
+            Self::Nginx => &["x-forwarded-for", "x-forwarded-host", "x-forwarded-proto"],
+            Self::AwsAlb => &[
+                "x-forwarded-for",
+                "x-forwarded-host",
+                "x-forwarded-port",
+                "x-forwarded-proto",
+            ],
         }
     }
 }
@@ -351,6 +381,7 @@ mod tests {
 
             [serve]
             listen = "0.0.0.0:8080"
+            behind-proxy = "cloudflare"
 
             [bia]
             timeout = "30s"
@@ -375,8 +406,12 @@ mod tests {
         assert_eq!(config.swoole.task_workers, 4);
         assert_eq!(config.swoole.hooks, vec![SwooleHook::Tcp, SwooleHook::File]);
         assert_eq!(
-            config.serve.unwrap().listen.0,
+            config.serve.as_ref().unwrap().listen.0,
             "0.0.0.0:8080".parse().unwrap()
+        );
+        assert_eq!(
+            config.serve.unwrap().behind_proxy,
+            Some(BehindProxy::Cloudflare)
         );
         assert_eq!(config.bia.timeout, Some(Timeout(Duration::from_secs(30))));
         assert_eq!(config.bia.concurrency, Some(50));
@@ -431,6 +466,24 @@ mod tests {
         let message = parse_error("[serve]");
 
         assert!(message.contains("listen"), "got: {message}");
+    }
+
+    #[test]
+    fn behind_proxy_accepts_known_presets_only() {
+        assert_eq!(
+            parse("[serve]\nlisten = \"127.0.0.1:8080\"\nbehind-proxy = \"aws-alb\"")
+                .unwrap()
+                .serve
+                .unwrap()
+                .behind_proxy,
+            Some(BehindProxy::AwsAlb)
+        );
+
+        let message =
+            parse_error("[serve]\nlisten = \"127.0.0.1:8080\"\nbehind-proxy = \"haproxy\"");
+
+        assert!(message.contains("unknown variant"), "got: {message}");
+        assert!(message.contains("cloudflare"), "got: {message}");
     }
 
     #[test]
@@ -509,6 +562,7 @@ mod tests {
         let holder = TcpListener::bind("127.0.0.1:0").unwrap();
         let section = ServeSection {
             listen: Listen(holder.local_addr().unwrap()),
+            behind_proxy: None,
         };
 
         let message = section.preflight().expect_err("port is held");

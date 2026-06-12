@@ -6,11 +6,15 @@ use ripht_php_sapi::{ExecutionHooks, ExecutionMessage, OutputAction};
 
 pub struct BiaHooks {
     shutdown: Arc<AtomicBool>,
+    graceful_shutdown: bool,
 }
 
 impl BiaHooks {
-    pub fn new(shutdown: Arc<AtomicBool>) -> Self {
-        Self { shutdown }
+    pub fn new(shutdown: Arc<AtomicBool>, graceful_shutdown: bool) -> Self {
+        Self {
+            shutdown,
+            graceful_shutdown,
+        }
     }
 }
 
@@ -30,6 +34,10 @@ impl ExecutionHooks for BiaHooks {
     }
 
     fn is_connection_alive(&self) -> bool {
+        if self.graceful_shutdown {
+            return true;
+        }
+
         !self.shutdown.load(Ordering::Relaxed)
     }
 }

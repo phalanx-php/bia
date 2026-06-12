@@ -11,11 +11,11 @@ mod inline;
 mod linux_compat;
 mod native_functions;
 mod run_mode;
+mod shutdown;
 
 use std::io::Write;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 
 use clap::{CommandFactory, Parser};
 use error::BiaError;
@@ -116,7 +116,7 @@ fn run() -> Result<ExitCode, BiaError> {
             })?;
     }
 
-    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown = shutdown::flag();
 
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown)).ok();
 
@@ -182,7 +182,9 @@ fn run() -> Result<ExitCode, BiaError> {
         Err(error) => return Err(BiaError::new(error.to_string())),
     };
 
-    let hooks = hooks::BiaHooks::new(Arc::clone(&shutdown));
+    let graceful_shutdown = matches!(&run_mode, RunMode::Passthrough)
+        && cli.args.first().is_some_and(|arg| arg == "serve");
+    let hooks = hooks::BiaHooks::new(shutdown, graceful_shutdown);
 
     match php.execute_with_hooks(ctx, hooks) {
         Ok(result) => {

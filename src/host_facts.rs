@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use serde::Serialize;
 
 use crate::env_map::EnvMap;
-use crate::host_config::{HostConfig, SwooleHook, WorkerCount};
+use crate::host_config::{BehindProxy, HostConfig, SwooleHook, WorkerCount};
 
 /// The handoff version. PHP refuses to boot when its generated class
 /// expects a different contract.
@@ -76,6 +76,17 @@ impl HostFacts {
             },
             serve: config.serve.as_ref().map(|serve| ServeFacts {
                 listen: serve.listen.0.to_string(),
+                behind_proxy: serve.behind_proxy,
+                trusted_headers: serve
+                    .behind_proxy
+                    .map(|proxy| {
+                        proxy
+                            .trusted_headers()
+                            .iter()
+                            .map(|header| (*header).to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             }),
             bia: BiaFacts {
                 timeout_ms: config
@@ -149,6 +160,8 @@ pub struct SwooleFacts {
 #[derive(Debug, Serialize)]
 pub struct ServeFacts {
     listen: String,
+    behind_proxy: Option<BehindProxy>,
+    trusted_headers: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -220,6 +233,7 @@ mod tests {
 
             [serve]
             listen = "0.0.0.0:8080"
+            behind-proxy = "cloudflare"
 
             [bia]
             timeout = "30s"
@@ -240,6 +254,8 @@ mod tests {
         assert_eq!(value["swoole"]["event_workers"], 4);
         assert_eq!(value["swoole"]["hooks"][0], "tcp");
         assert_eq!(value["serve"]["listen"], "0.0.0.0:8080");
+        assert_eq!(value["serve"]["behind_proxy"], "cloudflare");
+        assert_eq!(value["serve"]["trusted_headers"][0], "cf-connecting-ip");
         assert_eq!(value["bia"]["timeout_ms"], 30_000);
         assert_eq!(value["bia"]["concurrency"], 50);
         assert_eq!(value["bia"]["verbose"], true);

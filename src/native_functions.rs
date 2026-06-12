@@ -5,6 +5,7 @@ use ripht_php_sapi::native::{Call, Function, ReturnValue};
 
 use crate::analysis;
 use crate::host_facts;
+use crate::shutdown;
 
 unsafe extern "C" fn zif_bia_code_query_json(
     execute_data: *mut c_void,
@@ -40,6 +41,14 @@ unsafe extern "C" fn zif_phalanx_host_facts(
 
     // SAFETY: PHP supplied `return_value` for this active native call.
     unsafe { native::set_string(return_value, json.as_bytes()) };
+}
+
+unsafe extern "C" fn zif_bia_shutdown_requested(
+    _execute_data: *mut c_void,
+    return_value: *mut ReturnValue,
+) {
+    // SAFETY: PHP supplied `return_value` for this active native call.
+    unsafe { (*return_value).set_long(if shutdown::requested() { 1 } else { 0 }) };
 }
 
 #[repr(C)]
@@ -90,6 +99,12 @@ static ARGINFO_HOST_FACTS: [ArgInfo; 1] = [ArgInfo {
     default_value: std::ptr::null(),
 }];
 
+static ARGINFO_SHUTDOWN_REQUESTED: [ArgInfo; 1] = [ArgInfo {
+    name: std::ptr::dangling::<c_char>(),
+    type_info: type_info(4, false),
+    default_value: std::ptr::null(),
+}];
+
 macro_rules! func_entry {
     ($name:expr, $handler:expr, $arginfo:expr) => {
         // SAFETY: function names and arginfo point to immutable static data, and
@@ -106,7 +121,7 @@ macro_rules! func_entry {
 }
 
 pub fn entries() -> &'static [Function] {
-    static ENTRIES: [Function; 2] = [
+    static ENTRIES: [Function; 3] = [
         func_entry!(
             c"bia_code_query_json",
             zif_bia_code_query_json,
@@ -116,6 +131,11 @@ pub fn entries() -> &'static [Function] {
             c"phalanx_host_facts",
             zif_phalanx_host_facts,
             ARGINFO_HOST_FACTS
+        ),
+        func_entry!(
+            c"bia_shutdown_requested",
+            zif_bia_shutdown_requested,
+            ARGINFO_SHUTDOWN_REQUESTED
         ),
     ];
 
