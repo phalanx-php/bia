@@ -536,3 +536,38 @@ while (true) {
     terminate(&mut child);
     wait_or_kill(&mut child);
 }
+
+#[test]
+#[ignore = "requires static PHP runtime with Swoole"]
+fn test_runtime_contract_proves_swoole_under_bia() {
+    let output = bia()
+        .arg("runtime:contract")
+        .output()
+        .expect("failed to run runtime contract");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "exit: {} stdout: {stdout} stderr: {stderr}",
+        output.status
+    );
+
+    let payload: serde_json::Value = serde_json::from_str(&stdout).expect("runtime contract JSON");
+    assert_eq!(payload["swoole"]["contract"], 1);
+    assert_eq!(payload["swoole"]["native"], true);
+    assert_eq!(payload["swoole"]["extension"], "swoole");
+    assert_eq!(payload["swoole"]["extension_loaded"], true);
+    assert!(
+        payload["swoole"]["version"]
+            .as_str()
+            .is_some_and(|version| !version.is_empty()),
+        "payload: {payload}"
+    );
+    assert!(
+        payload["swoole"]["features"]["http_server"]
+            .as_bool()
+            .is_some_and(|loaded| loaded),
+        "payload: {payload}"
+    );
+}

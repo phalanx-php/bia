@@ -11,6 +11,7 @@ use clap::Parser;
   bia -r 'a = 3; bia()->dump(a * 3)'
   bia run script.php
   bia dev:watch run script.php
+  bia runtime:contract
   bia doctor
 
 Slim vars: inline -r code auto-adds $ to 1-2 lowercase letter variables.
