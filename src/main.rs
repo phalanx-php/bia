@@ -4,6 +4,7 @@ mod embed;
 mod error;
 mod exit_status;
 mod hooks;
+mod host_config;
 mod inline;
 #[cfg(target_os = "linux")]
 mod linux_compat;
@@ -50,6 +51,27 @@ fn run() -> Result<ExitCode, BiaError> {
         return Ok(ExitCode::SUCCESS);
     }
 
+    let cwd = std::env::current_dir()
+        .map_err(|error| BiaError::from_error("failed to determine current directory", error))?;
+
+    // The phalanx.toml gate: a broken host config refuses here, before any
+    // PHP exists. Serve runs also prove the listen address pre-PHP; the
+    // real bind belongs to the Swoole server PHP constructs.
+    let host = host_config::load(&cwd).map_err(|error| BiaError::new(error.to_string()))?;
+
+    if (cli.verbose || host.config.bia.verbose)
+        && let Some(path) = &host.path
+    {
+        eprintln!("bia: using {}", path.display());
+    }
+
+    if matches!(&run_mode, RunMode::Passthrough)
+        && cli.args.first().is_some_and(|arg| arg == "serve")
+        && let Some(serve) = &host.config.serve
+    {
+        serve.preflight().map_err(BiaError::new)?;
+    }
+
     let runtime = embed::EmbeddedRuntime::extract()
         .map_err(|error| BiaError::from_error("failed to extract runtime", error))?;
 
@@ -65,8 +87,22 @@ fn run() -> Result<ExitCode, BiaError> {
     php.set_ini("swoole.use_shortname", "Off")
         .map_err(|error| BiaError::from_error("failed to set swoole.use_shortname", error))?;
 
-    php.set_ini("memory_limit", "512M")
+    let memory_limit = host
+        .config
+        .php
+        .memory_limit
+        .as_ref()
+        .map_or("512M", |limit| limit.as_ini_value());
+
+    php.set_ini("memory_limit", memory_limit)
         .map_err(|error| BiaError::from_error("failed to set memory_limit", error))?;
+
+    for (key, value) in &host.config.php.ini {
+        php.set_ini(key.as_str(), value.as_ini_value())
+            .map_err(|error| {
+                BiaError::from_error(format!("failed to set [php] ini {key}"), error)
+            })?;
+    }
 
     let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -75,9 +111,6 @@ fn run() -> Result<ExitCode, BiaError> {
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&shutdown)).ok();
 
     let runtime_dir = runtime.runtime_path().to_string_lossy().into_owned();
-
-    let cwd = std::env::current_dir()
-        .map_err(|error| BiaError::from_error("failed to determine current directory", error))?;
 
     let exit_file = NamedTempFile::new()
         .map_err(|error| BiaError::from_error("failed to create exit code file", error))?;
@@ -130,7 +163,7 @@ fn run() -> Result<ExitCode, BiaError> {
         .with_env("BIA_EXIT_FILE", &exit_path)
         .with_env("BIA_EMBEDDED", "true");
 
-    if cli.verbose {
+    if cli.verbose || host.config.bia.verbose {
         req = req.with_env("BIA_VERBOSE", "1");
     }
 
