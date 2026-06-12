@@ -1,6 +1,7 @@
 mod analysis;
 mod cli;
 mod embed;
+mod env_map;
 mod error;
 mod exit_status;
 mod hooks;
@@ -144,17 +145,26 @@ fn run() -> Result<ExitCode, BiaError> {
         }
     };
 
-    let app_env = host_facts::AppEnv::detect().map_err(BiaError::new)?;
+    let env_root = host
+        .path
+        .as_ref()
+        .and_then(|path| path.parent())
+        .unwrap_or(cwd.as_path());
+    let env = env_map::EnvMap::load(env_root, &host.config.env);
+    let app_env = host_facts::AppEnv::detect_from(&env).map_err(BiaError::new)?;
     let effective_verbose = cli.verbose || host.config.bia.verbose;
 
     let facts = host_facts::HostFacts::gather(
         &host.config,
-        app_env,
-        argv,
-        &runtime.runtime_path(),
-        &cwd,
-        memory_limit,
-        effective_verbose,
+        host_facts::HostFactInput {
+            app_env,
+            env,
+            argv,
+            runtime_dir: &runtime.runtime_path(),
+            cwd: &cwd,
+            memory_limit,
+            verbose: effective_verbose,
+        },
     );
 
     host_facts::publish(&facts);

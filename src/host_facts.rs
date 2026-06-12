@@ -10,6 +10,7 @@ use std::sync::OnceLock;
 
 use serde::Serialize;
 
+use crate::env_map::EnvMap;
 use crate::host_config::{HostConfig, SwooleHook, WorkerCount};
 
 /// The handoff version. PHP refuses to boot when its generated class
@@ -38,6 +39,7 @@ pub struct HostFacts {
     embedded: bool,
     argv: Vec<String>,
     app_env: AppEnv,
+    env: EnvMap,
     php: PhpFacts,
     swoole: SwooleFacts,
     serve: Option<ServeFacts>,
@@ -48,22 +50,15 @@ pub struct HostFacts {
 impl HostFacts {
     /// The generic runtime reports embedded: false - the flag distinguishes
     /// future baked per-app binaries from day one.
-    pub fn gather(
-        config: &HostConfig,
-        app_env: AppEnv,
-        argv: Vec<String>,
-        runtime_dir: &Path,
-        cwd: &Path,
-        memory_limit: &str,
-        verbose: bool,
-    ) -> Self {
+    pub fn gather(config: &HostConfig, input: HostFactInput<'_>) -> Self {
         Self {
             contract: CONTRACT,
             embedded: false,
-            argv,
-            app_env,
+            argv: input.argv,
+            app_env: input.app_env,
+            env: input.env,
             php: PhpFacts {
-                memory_limit: memory_limit.to_string(),
+                memory_limit: input.memory_limit.to_string(),
                 ini: config
                     .php
                     .ini
@@ -88,15 +83,25 @@ impl HostFacts {
                     .timeout
                     .map(|timeout| timeout.0.as_millis() as u64),
                 concurrency: config.bia.concurrency,
-                verbose,
+                verbose: input.verbose,
             },
             paths: PathFacts {
-                runtime_dir: runtime_dir.to_string_lossy().into_owned(),
-                cwd: cwd.to_string_lossy().into_owned(),
+                runtime_dir: input.runtime_dir.to_string_lossy().into_owned(),
+                cwd: input.cwd.to_string_lossy().into_owned(),
                 watch: config.dev.watch.clone(),
             },
         }
     }
+}
+
+pub struct HostFactInput<'a> {
+    pub app_env: AppEnv,
+    pub env: EnvMap,
+    pub argv: Vec<String>,
+    pub runtime_dir: &'a Path,
+    pub cwd: &'a Path,
+    pub memory_limit: &'a str,
+    pub verbose: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -108,12 +113,11 @@ pub enum AppEnv {
 }
 
 impl AppEnv {
-    /// Process env is the M.02 source; the .env pipeline (M.03) feeds this
-    /// later. Unset or empty means dev; anything else must name a real env.
-    pub fn detect() -> Result<Self, String> {
-        match std::env::var("APP_ENV") {
-            Err(_) => Ok(Self::Dev),
-            Ok(value) => Self::named(&value),
+    /// Unset or empty means dev; anything else must name a real env.
+    pub fn detect_from(env: &EnvMap) -> Result<Self, String> {
+        match env.get("APP_ENV") {
+            None => Ok(Self::Dev),
+            Some(value) => Self::named(value),
         }
     }
 
@@ -186,12 +190,15 @@ mod tests {
     fn gather_facts(raw: &str) -> HostFacts {
         HostFacts::gather(
             &config(raw),
-            AppEnv::Test,
-            vec!["run".to_string(), "script.php".to_string()],
-            Path::new("/tmp/runtime"),
-            Path::new("/tmp/project"),
-            "256M",
-            true,
+            HostFactInput {
+                app_env: AppEnv::Test,
+                env: EnvMap::empty(),
+                argv: vec!["run".to_string(), "script.php".to_string()],
+                runtime_dir: Path::new("/tmp/runtime"),
+                cwd: Path::new("/tmp/project"),
+                memory_limit: "256M",
+                verbose: true,
+            },
         )
     }
 
@@ -227,6 +234,7 @@ mod tests {
         assert_eq!(value["embedded"], false);
         assert_eq!(value["argv"][1], "script.php");
         assert_eq!(value["app_env"], "test");
+        assert!(value["env"]["values"].is_object());
         assert_eq!(value["php"]["memory_limit"], "256M");
         assert_eq!(value["php"]["ini"]["opcache.enable"], "1");
         assert_eq!(value["swoole"]["event_workers"], 4);
@@ -334,6 +342,7 @@ mod tests {
             r#"
             require {app_env:?};
             require {bia_facts:?};
+            require {env_facts:?};
             require {path_facts:?};
             require {php_facts:?};
             require {serve_facts:?};
@@ -353,6 +362,7 @@ mod tests {
             "#,
             app_env = temp.path().join("AppEnv.php").display().to_string(),
             bia_facts = temp.path().join("BiaFacts.php").display().to_string(),
+            env_facts = temp.path().join("EnvFacts.php").display().to_string(),
             path_facts = temp.path().join("PathFacts.php").display().to_string(),
             php_facts = temp.path().join("PhpFacts.php").display().to_string(),
             serve_facts = temp.path().join("ServeFacts.php").display().to_string(),
