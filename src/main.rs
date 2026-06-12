@@ -1,5 +1,6 @@
 mod analysis;
 mod cli;
+mod dev_watch;
 mod embed;
 mod env_map;
 mod error;
@@ -64,6 +65,12 @@ fn run() -> Result<ExitCode, BiaError> {
         && let Some(path) = &host.path
     {
         eprintln!("bia: using {}", path.display());
+    }
+
+    if matches!(&run_mode, RunMode::Passthrough)
+        && cli.args.first().is_some_and(|arg| arg == "dev:watch")
+    {
+        return dev_watch::run(&host, cwd.as_path(), &cli.args[1..]);
     }
 
     if matches!(&run_mode, RunMode::Passthrough)

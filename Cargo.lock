@@ -116,6 +116,7 @@ dependencies = [
  "mago-span",
  "mago-syntax",
  "mago-syntax-core",
+ "notify",
  "ripht-php-sapi",
  "serde",
  "serde_json",

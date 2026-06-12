@@ -85,6 +85,45 @@ fn wait_or_kill(child: &mut Child) {
     let _ = child.kill();
 }
 
+fn wait_for_file_contains(path: &std::path::Path, needle: &str) -> String {
+    let deadline = Instant::now() + Duration::from_secs(10);
+
+    while Instant::now() < deadline {
+        if let Ok(contents) = std::fs::read_to_string(path)
+            && contents.contains(needle)
+        {
+            return contents;
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    let contents = std::fs::read_to_string(path).unwrap_or_default();
+    panic!(
+        "{} did not contain {needle:?}; contents: {contents}",
+        path.display()
+    );
+}
+
+fn marker_pid(contents: &str) -> u32 {
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix("pid="))
+        .expect("marker pid")
+        .parse()
+        .expect("numeric marker pid")
+}
+
+fn pid_is_alive(pid: u32) -> bool {
+    Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 fn bia_with_stdin(input: &str) -> std::process::Output {
     use std::io::Write;
     use std::process::Stdio;
@@ -411,4 +450,89 @@ return static function (TrustedRequest $trusted, Swoole\Http\Request $request): 
             || refused.contains("CONNECTION_RESET"),
         "refused response: {refused}"
     );
+}
+
+#[test]
+#[ignore = "requires static PHP runtime and composer"]
+fn test_dev_watch_refreshes_classmap_and_reloads_child() {
+    let temp = tempfile::tempdir().unwrap();
+    let app_dir = temp.path().join("app");
+    let nested_dir = temp.path().join("work/deep");
+    std::fs::create_dir_all(&app_dir).unwrap();
+    std::fs::create_dir_all(&nested_dir).unwrap();
+
+    std::fs::write(
+        temp.path().join("phalanx.toml"),
+        r#"
+        [dev]
+        watch = ["app"]
+        "#,
+    )
+    .unwrap();
+
+    std::fs::write(
+        temp.path().join("composer.json"),
+        r#"{"autoload":{"classmap":["app/"]}}"#,
+    )
+    .unwrap();
+
+    std::fs::write(
+        app_dir.join("First.php"),
+        "<?php\nnamespace App;\nfinal class First {}\n",
+    )
+    .unwrap();
+
+    std::fs::write(
+        temp.path().join("probe.php"),
+        r#"<?php
+require __DIR__ . '/vendor/autoload.php';
+
+$state = class_exists('App\\Second') ? 'loaded' : 'missing';
+file_put_contents(__DIR__ . '/probe-status.txt', "pid=" . getmypid() . "\nstate={$state}\n");
+
+while (true) {
+    usleep(100000);
+}
+"#,
+    )
+    .unwrap();
+
+    Command::new("composer")
+        .args(["dump-autoload", "--quiet"])
+        .current_dir(temp.path())
+        .status()
+        .expect("initial composer dump-autoload");
+
+    let marker = temp.path().join("probe-status.txt");
+    let mut child = bia()
+        .args(["dev:watch", "run", "probe.php"])
+        .current_dir(nested_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn bia dev:watch");
+
+    let initial_marker = wait_for_file_contains(&marker, "missing");
+    let initial_pid = marker_pid(&initial_marker);
+
+    std::fs::write(
+        app_dir.join("Second.php"),
+        "<?php\nnamespace App;\nfinal class Second {}\n",
+    )
+    .unwrap();
+
+    let reloaded_marker = wait_for_file_contains(&marker, "loaded");
+    let reloaded_pid = marker_pid(&reloaded_marker);
+
+    assert_ne!(
+        initial_pid, reloaded_pid,
+        "dev:watch should restart the child process"
+    );
+    assert!(
+        !pid_is_alive(initial_pid),
+        "dev:watch left the old child process alive: {initial_pid}"
+    );
+
+    terminate(&mut child);
+    wait_or_kill(&mut child);
 }
