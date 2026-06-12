@@ -3,6 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
+mod host_facts_codegen {
+    include!("../../src/host_facts/codegen.rs");
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("help");
@@ -10,6 +14,7 @@ fn main() -> ExitCode {
     let root = workspace_root();
 
     match cmd {
+        "gen-host-facts" => run_gen_host_facts(&root),
         "embed" => run_embed(&root),
         "build" => run_build(&root, false),
         "release" => run_build(&root, true),
@@ -33,12 +38,25 @@ fn print_help() {
 Usage: cargo xtask <command>
 
 Commands:
+  gen-host-facts  Generate PHP HostFacts value classes
   embed    Rebuild embedded PHP runtime tar from monorepo sources
   build    embed + cargo build (dev)
   release  embed + cargo build --release
   test     embed + build + cargo test (integration)
   check    embed + cargo check"
     );
+}
+
+fn run_gen_host_facts(root: &PathBuf) -> ExitCode {
+    eprintln!(":: Generating HostFacts PHP classes...");
+
+    match host_facts_codegen::write_to(root) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("failed to generate HostFacts PHP classes: {error}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn find_php() -> String {
@@ -147,6 +165,12 @@ fn run_test(root: &PathBuf) -> ExitCode {
 }
 
 fn run_check(root: &PathBuf) -> ExitCode {
+    if let Err(error) = host_facts_codegen::check_fresh(root) {
+        eprintln!("{error}");
+
+        return ExitCode::from(1);
+    }
+
     if run_embed_stability_check(root) != ExitCode::SUCCESS {
         return ExitCode::from(1);
     }

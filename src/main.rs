@@ -5,6 +5,7 @@ mod error;
 mod exit_status;
 mod hooks;
 mod host_config;
+mod host_facts;
 mod inline;
 #[cfg(target_os = "linux")]
 mod linux_compat;
@@ -110,14 +111,12 @@ fn run() -> Result<ExitCode, BiaError> {
 
     signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&shutdown)).ok();
 
-    let runtime_dir = runtime.runtime_path().to_string_lossy().into_owned();
-
     let exit_file = NamedTempFile::new()
         .map_err(|error| BiaError::from_error("failed to create exit code file", error))?;
 
     let exit_path = exit_file.path().to_string_lossy().into_owned();
 
-    let (_inline_file, args_json) = match &run_mode {
+    let (_inline_file, argv) = match &run_mode {
         RunMode::Inline(code) => {
             let wrapped = inline::wrap_inline_code(code);
 
@@ -133,21 +132,10 @@ fn run() -> Result<ExitCode, BiaError> {
 
             let path = f.path().to_string_lossy().into_owned();
 
-            let json = serde_json::to_string(&["run", &path])
-                .map_err(|error| BiaError::from_error("failed to serialize args", error))?;
-
-            (Some(f), json)
+            (Some(f), vec!["run".to_string(), path])
         }
-        RunMode::File(path) => {
-            let json = serde_json::to_string(&["run", path.as_str()])
-                .map_err(|error| BiaError::from_error("failed to serialize args", error))?;
-            (None, json)
-        }
-        RunMode::Passthrough => {
-            let json = serde_json::to_string(&cli.args)
-                .map_err(|error| BiaError::from_error("failed to serialize args", error))?;
-            (None, json)
-        }
+        RunMode::File(path) => (None, vec!["run".to_string(), path.clone()]),
+        RunMode::Passthrough => (None, cli.args.clone()),
         RunMode::Help => {
             return Ok(ExitCode::SUCCESS);
         }
@@ -156,16 +144,24 @@ fn run() -> Result<ExitCode, BiaError> {
         }
     };
 
-    let mut req = CliRequest::new()
-        .with_working_dir(&cwd)
-        .with_env("BIA_RUNTIME_DIR", &runtime_dir)
-        .with_env("BIA_ARGV", &args_json)
-        .with_env("BIA_EXIT_FILE", &exit_path)
-        .with_env("BIA_EMBEDDED", "true");
+    let app_env = host_facts::AppEnv::detect().map_err(BiaError::new)?;
+    let effective_verbose = cli.verbose || host.config.bia.verbose;
 
-    if cli.verbose || host.config.bia.verbose {
-        req = req.with_env("BIA_VERBOSE", "1");
-    }
+    let facts = host_facts::HostFacts::gather(
+        &host.config,
+        app_env,
+        argv,
+        &runtime.runtime_path(),
+        &cwd,
+        memory_limit,
+        effective_verbose,
+    );
+
+    host_facts::publish(&facts);
+
+    let req = CliRequest::new()
+        .with_working_dir(&cwd)
+        .with_env("BIA_EXIT_FILE", &exit_path);
 
     let ctx = match req.build(runtime.bootstrap.path()) {
         Ok(ctx) => ctx,

@@ -4,6 +4,7 @@ use ripht_php_sapi::native;
 use ripht_php_sapi::native::{Call, Function, ReturnValue};
 
 use crate::analysis;
+use crate::host_facts;
 
 unsafe extern "C" fn zif_bia_code_query_json(
     execute_data: *mut c_void,
@@ -25,6 +26,17 @@ unsafe extern "C" fn zif_bia_code_query_json(
         analysis::CodeQueryEngine::shared().dispatch_json(&String::from_utf8_lossy(request))
     })
     .unwrap_or_else(|_| analysis::error_json("Bia code parser panicked"));
+
+    // SAFETY: PHP supplied `return_value` for this active native call.
+    unsafe { native::set_string(return_value, json.as_bytes()) };
+}
+
+unsafe extern "C" fn zif_phalanx_host_facts(
+    _execute_data: *mut c_void,
+    return_value: *mut ReturnValue,
+) {
+    let json =
+        std::panic::catch_unwind(|| host_facts::published_json().unwrap_or("{}")).unwrap_or("{}");
 
     // SAFETY: PHP supplied `return_value` for this active native call.
     unsafe { native::set_string(return_value, json.as_bytes()) };
@@ -72,6 +84,12 @@ static ARGINFO_CODE_QUERY_JSON: [ArgInfo; 2] = [
     },
 ];
 
+static ARGINFO_HOST_FACTS: [ArgInfo; 1] = [ArgInfo {
+    name: std::ptr::dangling::<c_char>(),
+    type_info: type_info(IS_STRING, false),
+    default_value: std::ptr::null(),
+}];
+
 macro_rules! func_entry {
     ($name:expr, $handler:expr, $arginfo:expr) => {
         // SAFETY: function names and arginfo point to immutable static data, and
@@ -88,11 +106,18 @@ macro_rules! func_entry {
 }
 
 pub fn entries() -> &'static [Function] {
-    static ENTRIES: [Function; 1] = [func_entry!(
-        c"bia_code_query_json",
-        zif_bia_code_query_json,
-        ARGINFO_CODE_QUERY_JSON
-    )];
+    static ENTRIES: [Function; 2] = [
+        func_entry!(
+            c"bia_code_query_json",
+            zif_bia_code_query_json,
+            ARGINFO_CODE_QUERY_JSON
+        ),
+        func_entry!(
+            c"phalanx_host_facts",
+            zif_phalanx_host_facts,
+            ARGINFO_HOST_FACTS
+        ),
+    ];
 
     &ENTRIES
 }

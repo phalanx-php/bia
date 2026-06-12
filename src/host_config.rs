@@ -9,7 +9,7 @@ use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub const FILE_NAME: &str = "phalanx.toml";
 
@@ -184,7 +184,7 @@ impl TryFrom<WorkerCountRepr> for WorkerCount {
 /// The declarative coroutine hook list (the v1 SWOOLE_HOOK_FILE lesson):
 /// every hook is named against the known flag set, so a typo is a typed
 /// refusal listing the valid names instead of a silently missing hook.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SwooleHook {
     Tcp,
